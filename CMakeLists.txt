@@ -162,6 +162,9 @@ if (APPLE)
     add_custom_command(TARGET ${PROJECT_NAME}_auv2 POST_BUILD
             COMMAND /usr/bin/plutil -replace AudioComponents.0.sandboxSafe -bool NO
                     "$<TARGET_FILE_DIR:${PROJECT_NAME}_auv2>/../Info.plist")
+
+    add_executable(openutau-bridge-relay tools/logic_relay.cpp)
+    target_link_libraries(openutau-bridge-relay PRIVATE Threads::Threads)
 endif()
 
 # Installing into the per-user plug-in folders, which is where a host looks and which needs no

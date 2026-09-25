@@ -1,29 +1,22 @@
 #!/bin/sh
 set -eu
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+source_relay="$repo/build/openutau-bridge-relay"
 agent="$HOME/Library/LaunchAgents/moe.kakaru.openutau-bridge-relay.plist"
 installed_dir="$HOME/Library/Application Support/OpenUtau Bridge"
+installed_relay="$installed_dir/openutau-bridge-relay"
+test -x "$source_relay" || { echo 'Build openutau-bridge-relay first.' >&2; exit 1; }
 mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs" "$installed_dir"
-cp "$script_dir/logic_relay.py" "$installed_dir/logic_relay.py"
-
-/usr/bin/python3 - "$installed_dir/logic_relay.py" "$agent" <<'PY'
-import plistlib
-import sys
-from pathlib import Path
-
-script, agent = sys.argv[1:]
-config = {
-    "Label": "moe.kakaru.openutau-bridge-relay",
-    "ProgramArguments": ["/usr/bin/python3", script],
-    "RunAtLoad": True,
-    "KeepAlive": True,
-    "StandardOutPath": str(Path.home() / "Library/Logs/OpenUtauBridgeRelay.log"),
-    "StandardErrorPath": str(Path.home() / "Library/Logs/OpenUtauBridgeRelay.err.log"),
-}
-with open(agent, "wb") as output:
-    plistlib.dump(config, output)
-PY
-
 launchctl bootout "gui/$(id -u)" "$agent" 2>/dev/null || true
+ditto "$source_relay" "$installed_relay"
+codesign --force --sign - --timestamp=none "$installed_relay"
+printf '{}' > "$agent"
+/usr/libexec/PlistBuddy -c 'Add :Label string moe.kakaru.openutau-bridge-relay' "$agent"
+/usr/libexec/PlistBuddy -c 'Add :ProgramArguments array' "$agent"
+/usr/libexec/PlistBuddy -c "Add :ProgramArguments:0 string $installed_relay" "$agent"
+/usr/libexec/PlistBuddy -c 'Add :RunAtLoad bool true' "$agent"
+/usr/libexec/PlistBuddy -c 'Add :KeepAlive bool true' "$agent"
+/usr/libexec/PlistBuddy -c "Add :StandardOutPath string $HOME/Library/Logs/OpenUtauBridgeRelay.log" "$agent"
+/usr/libexec/PlistBuddy -c "Add :StandardErrorPath string $HOME/Library/Logs/OpenUtauBridgeRelay.err.log" "$agent"
 launchctl bootstrap "gui/$(id -u)" "$agent"
