@@ -156,6 +156,14 @@ make_clapfirst_plugins(
         ASSET_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/assets
 )
 
+if (APPLE)
+    # The wrapper marks every generated AU as sandbox-safe. This bridge needs loopback access,
+    # which the generated resourceUsage already declares, so clear the contradictory flag.
+    add_custom_command(TARGET ${PROJECT_NAME}_auv2 POST_BUILD
+            COMMAND /usr/bin/plutil -replace AudioComponents.0.sandboxSafe -bool NO
+                    "$<TARGET_FILE_DIR:${PROJECT_NAME}_auv2>/../Info.plist")
+endif()
+
 # Installing into the per-user plug-in folders, which is where a host looks and which needs no
 # administrator rights — unlike the machine-wide ones under Program Files. Windows only: the
 # other platforms' paths are known but have never been built here, so they are not guessed at.

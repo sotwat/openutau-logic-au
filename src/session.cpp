@@ -21,19 +21,27 @@ bool Session::Start() {
         return true;
     }
     if (!listener_.Start()) {
+#if defined(__APPLE__)
+        // Logic's AUHostingService may allow outgoing loopback connections but deny listen().
+        // The local relay owns the advertised listener in that case.
+        relayMode_ = true;
+#else
         return false;
+#endif
     }
     // Bound first, advertised second: OpenUtau reads an advertisement as a promise that the port
     // is already listening, and deletes any file whose port it can bind itself (§4). The display
     // name is left to the stem, since a host does not say which track a plugin is on until later.
-    if (!discovery_.Publish(listener_.Port(), std::string())) {
-        listener_.Stop();
-        return false;
+    if (listener_.Port() != 0) {
+        if (!discovery_.Publish(listener_.Port(), std::string())) {
+            listener_.Stop();
+            return false;
+        }
     }
     stop_.store(false);
     running_.store(true);
     worker_ = std::thread([this] { Run(); });
-    BRIDGE_INFO("Bridge listening on port %d.", listener_.Port());
+    BRIDGE_INFO("Bridge %s.", listener_.Port() ? "listening directly" : "using local relay");
     return true;
 }
 
@@ -49,6 +57,9 @@ void Session::Stop() {
     // answer on it.
     discovery_.Remove();
     listener_.Stop();
+#if defined(__APPLE__)
+    relayPending_.reset();
+#endif
     connection_.reset();
     stream_.reset();
     connected_.store(false);
@@ -115,11 +126,31 @@ void Session::ServeConnection() {
         // still a project the DAW can play and mix.
         return;
     }
-    std::unique_ptr<SocketStream> accepted = listener_.Accept(kPollMs);
+    std::unique_ptr<SocketStream> accepted;
+#if defined(__APPLE__)
+    if (relayMode_) {
+        if (!relayPending_ && NowMs() >= nextRelayAttemptMs_) {
+            relayPending_ = ConnectLoopback(kRelayPort, false);
+            nextRelayAttemptMs_ = NowMs() + 1000;
+        }
+        if (relayPending_) {
+            char ready = 0;
+            int read = relayPending_->Read(&ready, 1, kPollMs);
+            if (read == 1 && ready == 'R') {
+                accepted = std::move(relayPending_);
+            } else if (read < 0 || (read == 1 && ready != 'R')) {
+                relayPending_.reset();
+            }
+        }
+    } else
+#endif
+    {
+        accepted = listener_.Accept(kPollMs);
+    }
     if (!accepted) {
         return;
     }
-    BRIDGE_INFO("OpenUtau connected on port %d.", listener_.Port());
+    BRIDGE_INFO("OpenUtau connected%s.", listener_.Port() ? " directly" : " through relay");
     stream_ = std::move(accepted);
     // Cast here rather than in make_unique: the handler base is private, so only a member of
     // this class may perform the conversion.

@@ -1,7 +1,7 @@
 #pragma once
 
 /*
- * One plugin instance's whole bridge: the listener, its advertisement, the connection when
+ * One plugin instance's whole bridge: the listener or macOS relay, the connection when
  * there is one, the audio it has collected and the snapshot the audio thread plays.
  *
  * Thread rules, which are the reason this class exists at all:
@@ -61,6 +61,9 @@ public:
     /// Long enough that an idle instance costs nothing, short enough that Stop() is not felt as
     /// a hang when a host unloads a plugin.
     static constexpr int kPollMs = 50;
+#if defined(__APPLE__)
+    static constexpr int kRelayPort = 46783;
+#endif
 
     Session() = default;
 
@@ -74,9 +77,8 @@ public:
     Session(const Session &) = delete;
     Session &operator=(const Session &) = delete;
 
-    /// Main thread. Binds a port, advertises it, then starts the worker — in that order,
-    /// because OpenUtau reads an advertisement as a promise that the port is already listening
-    /// (§4). False if the port could not be bound or advertised, and then nothing is running.
+    /// Main thread. Binds a port and advertises it before starting the worker. In a macOS AU
+    /// host that denies listen(), the worker instead connects to the installed local relay.
     bool Start();
 
     /// Main thread. Idempotent, and safe to call on a session that never started.
@@ -193,6 +195,11 @@ private:
     // --- worker thread only ---
     std::unique_ptr<SocketStream> stream_;
     std::unique_ptr<Connection> connection_;
+#if defined(__APPLE__)
+    bool relayMode_ = false;
+    std::unique_ptr<SocketStream> relayPending_;
+    int64_t nextRelayAttemptMs_ = 0;
+#endif
     AudioStore store_;
     std::vector<PartLayout> layout_;
     std::vector<TrackInfo> tracks_;

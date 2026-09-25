@@ -254,7 +254,7 @@ void Listener::Stop() {
     }
 }
 
-std::unique_ptr<SocketStream> ConnectLoopback(int port) {
+std::unique_ptr<SocketStream> ConnectLoopback(int port, bool logFailure) {
     EnsureSocketsReady();
     SocketHandle handle = static_cast<SocketHandle>(::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
     if (handle == kInvalidSocket) {
@@ -269,7 +269,9 @@ std::unique_ptr<SocketStream> ConnectLoopback(int port) {
     // completes at once or fails at once.
     if (::connect(Native(handle), reinterpret_cast<const sockaddr *>(&address),
                   sizeof(address)) != 0) {
-        BRIDGE_WARN("Could not connect to 127.0.0.1:%d (error %d).", port, LastError());
+        if (logFailure) {
+            BRIDGE_WARN("Could not connect to 127.0.0.1:%d (error %d).", port, LastError());
+        }
         CloseHandle(handle);
         return nullptr;
     }

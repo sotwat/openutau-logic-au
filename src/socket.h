@@ -68,9 +68,8 @@ private:
     int port_ = 0;
 };
 
-/// Dials 127.0.0.1:<port>. In production OpenUtau is the side that connects (PROTOCOL.md §4);
-/// this exists so the conformance tests can play OpenUtau over a real socket instead of a
-/// simulated stream. Null on failure, reason logged.
-std::unique_ptr<SocketStream> ConnectLoopback(int port);
+/// Dials 127.0.0.1:<port>. Used by tests and by the macOS relay fallback when a host denies
+/// incoming sockets. Null on failure; repeated relay retries can suppress the warning.
+std::unique_ptr<SocketStream> ConnectLoopback(int port, bool logFailure = true);
 
 }  // namespace bridge
