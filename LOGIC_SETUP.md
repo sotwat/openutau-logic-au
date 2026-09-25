@@ -11,7 +11,7 @@
 
 ## 別のApple Silicon Macへの導入
 
-GitHubの非公開リリースから`OpenUtau-Logic-AU-0.1.570.9-alpha-macos-arm64.zip`を取得し、展開して`sh install.sh`を実行します。公式OpenUtau本体、AU、中継がユーザー領域に入り、既存ファイルはバックアップされます。詳しい条件と署名に関する注意はZIP内の`README.md`を参照してください。Intel Mac向けではありません。
+[GitHubの非公開リリース](https://github.com/sotwat/openutau-logic-au/releases)から`OpenUtau-Logic-AU-0.1.570.9-alpha-macos-arm64.zip`を取得し、展開して`sh install.sh`を実行します。公式OpenUtau本体、AU、中継がユーザー領域に入り、既存ファイルはバックアップされます。詳しい条件と署名に関する注意はZIP内の`README.md`を参照してください。Intel Mac向けではありません。
 
 ソースから配布ZIPを作り直すときは、公式OpenUtau `0.1.570.9-alpha`のarm64版を`/Applications/OpenUtau.app`に置き、`sh distribution/build_macos_arm64.sh`を実行します。スクリプトは実行ファイルのSHA-256を照合してからAUと中継をビルドし、`dist/`にZIPを作ります。声ライブラリや譜面は含めません。
 
