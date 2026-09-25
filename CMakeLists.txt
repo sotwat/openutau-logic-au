@@ -38,6 +38,10 @@ if (MSVC)
 endif()
 
 set(PRODUCT_NAME "OpenUtau Bridge")
+set(BRIDGE_FORMATS CLAP VST3)
+if (APPLE)
+    list(APPEND BRIDGE_FORMATS AUV2)
+endif()
 
 # clap-wrapper resolves the (MIT) VST3 SDK itself. Its copy of CPM is vendored inside the
 # submodule, so configuring only ever reaches github.com.
@@ -142,7 +146,12 @@ make_clapfirst_plugins(
         # VST3 spec describes, and Steinberg's validator rejects the file form outright.
         WINDOWS_FOLDER_VST3 TRUE
 
-        PLUGIN_FORMATS CLAP VST3
+        PLUGIN_FORMATS ${BRIDGE_FORMATS}
+
+        AUV2_MANUFACTURER_NAME "OpenUtau Bridge"
+        AUV2_MANUFACTURER_CODE "OuBr"
+        AUV2_SUBTYPE_CODE "OuBg"
+        AUV2_INSTRUMENT_TYPE "aumu"
 
         ASSET_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/assets
 )
