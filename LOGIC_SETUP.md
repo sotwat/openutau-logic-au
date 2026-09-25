@@ -4,7 +4,7 @@
 
 ## このMacでの配置
 
-- DAW連携APIを含むOpenUtau: `~/Applications/OpenUtau DAW Alpha.app`（v0.1.570.9-alpha）。既存の`/Applications/OpenUtau.app`はそのままです。
+- OpenUtau: `/Applications/OpenUtau.app`と`~/Applications/OpenUtau DAW Alpha.app`。両方とも公式v0.1.570.9-alphaで、DAW連携APIを含みます。普段は前者を起動してください。更新チャンネルはAlphaに設定済みです。
 - AU音源: `~/Library/Audio/Plug-Ins/Components/OpenUtau Bridge.component`。
 - ローカル中継: `~/Library/Application Support/OpenUtau Bridge/logic_relay.py`。ログイン時に起動するLaunchAgentは`~/Library/LaunchAgents/moe.kakaru.openutau-bridge-relay.plist`です。
 - ビルド元: このフォルダ。AU対応と中継のソースは`CMakeLists.txt`、`src/`、`scripts/`にあります。
@@ -12,7 +12,7 @@
 ## Logic Proで使う
 
 1. Logic Proを起動し、ソフトウェア音源トラックを作ります。音源スロットで「AU音源」→「OpenUtau Bridge」→「OpenUtau Bridge」→「ステレオ」を選びます。Logicが起動済みでプラグインが表示されない場合は、プロジェクトを保存してLogicを再起動します。
-2. `OpenUtau DAW Alpha.app`でプロジェクトを開き、保存済みであることを確認します。
+2. `/Applications/OpenUtau.app`でプロジェクトを開き、保存済みであることを確認します。`OpenUtau DAW Alpha.app`でも同じ操作ができます。
 3. OpenUtauの「ツール」→「DAW Integration...」で「Refresh」を押し、Logic側の`OpenUtau Bridge Relay`を選んで「Connect」を押します。
 4. LogicとOpenUtauのテンポを同じ値にし、歌声のレンダリングが終わってからLogicで再生します。音量、パン、エフェクトはLogic側で調整します。
 5. OpenUtauの複数トラックを分ける場合は、LogicにAUをトラック数だけ挿し、各インスタンスの「OpenUtau Track」で対象トラックを選びます。Logicプロジェクトを開き直した後は、OpenUtau側で再接続します。
@@ -39,3 +39,5 @@ python3 -m unittest discover -s tests -p 'test_logic_relay.py'
 AUv2のビルドには`clap-wrapper`がAppleのAudioUnitSDKを取得します。署名はこのMacでのローカル利用向けです。別のMacへ配布する場合は、そのMacに合った署名と動作検証が必要です。
 
 2026-09-26の確認: `OpenUtauTest.logicx`でAUを挿入し、OpenUtau v0.1.570.9-alphaの保存済み`tell your world.ustx`を接続しました。Logicのテンポを150 BPMに合わせて再生し、音源トラックとStereo Outのレベルメーターに音声信号を確認しました。中継をLaunchAgentに切り替えた後も再接続でき、プロジェクト情報の再受信をログで確認しました。AU検証、C++テスト、ローカル中継のテストも通過しました。
+
+同日追記: `/Applications/OpenUtau.app`も公式v0.1.570.9-alphaに更新しました。公式DMGのSHA-256をGitHub Releasesの値と照合し、両アプリの実行ファイルと`OpenUtau.dll`が一致することを確認しました。通常版は「OpenUtau v0.1.570.9 (alpha)」として起動し、「DAW Integration...」メニューが表示されました。旧アプリと更新前の設定は`~/Applications/OpenUtau Backups/`に保存しました。
