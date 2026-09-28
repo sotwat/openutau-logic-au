@@ -1,7 +1,7 @@
 # OpenUtau + Logic Pro (Apple Silicon)
 
-This archive contains the unmodified official OpenUtau `0.1.570.12-alpha` app, the
-OpenUtau Bridge Audio Unit, and a native relay used by Logic Pro's AU host. It does
+This archive contains an OpenUtau `0.1.570.12-alpha` app with piano-roll trackpad
+pinch zoom added, the OpenUtau Bridge Audio Unit, and a native relay used by Logic Pro's AU host. It does
 not contain singers, projects, or user settings.
 
 ## Install
@@ -9,7 +9,7 @@ not contain singers, projects, or user settings.
 On an Apple Silicon Mac, extract the ZIP and run in Terminal:
 
 ```sh
-cd /path/to/OpenUtau-Logic-AU-0.1.570.12-alpha-macos-arm64
+cd /path/to/OpenUtau-Logic-AU-0.1.570.12-alpha-pinch.1-macos-arm64
 sh install.sh
 ```
 
@@ -44,9 +44,10 @@ confirm your specific macOS and Logic configuration.
 ## Sources and licenses
 
 - OpenUtau: <https://github.com/openutau/OpenUtau/releases/tag/0.1.570.12-alpha>
-  (MIT; `OPENUTAU_LICENSE.txt`).
+  (MIT; `OPENUTAU_LICENSE.txt`). The piano-roll change is in the source repository's
+  `patches/` directory and can be rebuilt with `scripts/build_openutau_au_pinch.sh`.
 - OpenUtau Bridge and this distribution: source repository linked from the GitHub
   release (MPL-2.0; `BRIDGE_LICENSE.txt`).
 
-The bundled OpenUtau executable matches the official arm64 DMG whose SHA-256 is
-`facbda82c8f478db3da5383fea33e70bfdbaea4f338a87f07375767c606f533b`.
+The bundled OpenUtau executable is ad hoc re-signed after replacing `OpenUtau.dll`.
+The separate `/Applications/OpenUtau.app` installation remains official and unchanged.

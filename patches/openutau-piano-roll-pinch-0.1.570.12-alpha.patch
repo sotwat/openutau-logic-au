@@ -1,0 +1,42 @@
+diff --git a/OpenUtau/Controls/PianoRoll.axaml b/OpenUtau/Controls/PianoRoll.axaml
+index 7ed63f8..aef9d8e 100644
+--- a/OpenUtau/Controls/PianoRoll.axaml
++++ b/OpenUtau/Controls/PianoRoll.axaml
+@@ -179,7 +179,8 @@
+                      PointerMoved="NotesCanvasPointerMoved"
+                      PointerReleased="NotesCanvasPointerReleased"
+                      DoubleTapped="NotesCanvasDoubleTapped"
+-                     PointerWheelChanged="NotesCanvasPointerWheelChanged">
++                     PointerWheelChanged="NotesCanvasPointerWheelChanged"
++                     PointerTouchPadGestureMagnify="NotesCanvasTouchPadMagnify">
+         <c:NotesCanvas.ContextMenu>
+           <ContextMenu ItemsSource="{Binding NotesContextMenuItems}"
+                        Opening="NotesContextMenuOpening">
+diff --git a/OpenUtau/Controls/PianoRoll.axaml.cs b/OpenUtau/Controls/PianoRoll.axaml.cs
+index 23ad5f2..eeef125 100644
+--- a/OpenUtau/Controls/PianoRoll.axaml.cs
++++ b/OpenUtau/Controls/PianoRoll.axaml.cs
+@@ -1111,6 +1111,23 @@ public void NotesCanvasDoubleTapped(object sender, TappedEventArgs args) {
+             }
+         }
+ 
++        public void NotesCanvasTouchPadMagnify(object sender, PointerDeltaEventArgs args) {
++            var control = (Control)sender;
++            var size = control.Bounds.Size;
++            if (size.Width <= 0 || size.Height <= 0 || args.Delta.Y == 0) {
++                return;
++            }
++            var point = args.GetPosition(control);
++            var position = new Point(
++                Math.Clamp(point.X / size.Width, 0, 1),
++                Math.Clamp(point.Y / size.Height, 0, 1));
++            var zoom = args.Delta.Y / 2;
++            ViewModel.NotesViewModel.OnXZoomed(position, zoom);
++            ViewModel.NotesViewModel.OnYZoomed(position, zoom);
++            LyricBox?.EndEdit();
++            args.Handled = true;
++        }
++
+         public void NotesCanvasPointerWheelChanged(object sender, PointerWheelEventArgs args) {
+             LyricBox?.EndEdit();
+             var control = (Control)sender;
