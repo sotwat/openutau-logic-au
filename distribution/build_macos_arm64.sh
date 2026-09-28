@@ -2,15 +2,21 @@
 set -eu
 
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-app=${OPENUTAU_APP:-/Applications/OpenUtau.app}
-version=0.1.570.9-alpha
+app=${OPENUTAU_APP:-/Applications/OpenUtau AU.app}
+version=0.1.570.12-alpha
 expected_app_sha=5cf8c101fbc049c76ad46e2c56c4c170aa7ec71b95430e0262f9bc22a6be65cf
+expected_dll_sha=8735a36feed07dc6a0dfc38b1b3d290628442523a4b5f019b952727a99fd0915
 name="OpenUtau-Logic-AU-${version}-macos-arm64"
 
 test -d "$app" || { echo "OpenUtau app not found: $app" >&2; exit 1; }
 actual_app_sha=$(shasum -a 256 "$app/Contents/MacOS/OpenUtau" | awk '{print $1}')
 test "$actual_app_sha" = "$expected_app_sha" || {
     echo "Expected official OpenUtau $version (arm64); found a different executable." >&2
+    exit 1
+}
+actual_dll_sha=$(shasum -a 256 "$app/Contents/MacOS/OpenUtau.dll" | awk '{print $1}')
+test "$actual_dll_sha" = "$expected_dll_sha" || {
+    echo "Expected official OpenUtau $version (arm64); found a different OpenUtau.dll." >&2
     exit 1
 }
 test "$(uname -m)" = arm64 || { echo 'Build on Apple Silicon.' >&2; exit 1; }

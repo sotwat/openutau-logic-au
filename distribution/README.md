@@ -1,6 +1,6 @@
 # OpenUtau + Logic Pro (Apple Silicon)
 
-This archive contains the unmodified official OpenUtau `0.1.570.9-alpha` app, the
+This archive contains the unmodified official OpenUtau `0.1.570.12-alpha` app, the
 OpenUtau Bridge Audio Unit, and a native relay used by Logic Pro's AU host. It does
 not contain singers, projects, or user settings.
 
@@ -9,7 +9,7 @@ not contain singers, projects, or user settings.
 On an Apple Silicon Mac, extract the ZIP and run in Terminal:
 
 ```sh
-cd /path/to/OpenUtau-Logic-AU-0.1.570.9-alpha-macos-arm64
+cd /path/to/OpenUtau-Logic-AU-0.1.570.12-alpha-macos-arm64
 sh install.sh
 ```
 
@@ -20,7 +20,7 @@ and starts the relay at login. Run the installer while logged into the account t
 will use Logic Pro. Logic Pro must already be installed.
 
 If an older `/Applications/OpenUtau.app` also exists, launch the newly installed
-`~/Applications/OpenUtau.app` explicitly. Do not run both copies at once.
+`~/Applications/OpenUtau AU.app` explicitly. Do not run both copies at once.
 
 In Logic, add **OpenUtau Bridge** as a stereo AU instrument. Open a saved USTX in
 OpenUtau, then choose **Tools → DAW Integration → Refresh → OpenUtau Bridge Relay →
@@ -43,10 +43,10 @@ confirm your specific macOS and Logic configuration.
 
 ## Sources and licenses
 
-- OpenUtau: <https://github.com/openutau/OpenUtau/releases/tag/0.1.570.9-alpha>
+- OpenUtau: <https://github.com/openutau/OpenUtau/releases/tag/0.1.570.12-alpha>
   (MIT; `OPENUTAU_LICENSE.txt`).
 - OpenUtau Bridge and this distribution: source repository linked from the GitHub
   release (MPL-2.0; `BRIDGE_LICENSE.txt`).
 
 The bundled OpenUtau executable matches the official arm64 DMG whose SHA-256 is
-`27a5d07a889a9b29a12c5ec657ba3cb607dc67975a47e04d5c1c87b0b81683f9`.
+`facbda82c8f478db3da5383fea33e70bfdbaea4f338a87f07375767c606f533b`.

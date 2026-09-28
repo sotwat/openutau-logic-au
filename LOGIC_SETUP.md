@@ -4,21 +4,21 @@
 
 ## このMacでの配置
 
-- OpenUtau: `/Applications/OpenUtau.app`と`~/Applications/OpenUtau DAW Alpha.app`。両方とも公式v0.1.570.9-alphaで、DAW連携APIを含みます。普段は前者を起動してください。更新チャンネルはAlphaに設定済みです。
+- OpenUtau: `/Applications/OpenUtau.app`と`/Applications/OpenUtau AU.app`はどちらも公式v0.1.570.12-alphaです。普段は前者を起動してください。旧版は`~/Applications/OpenUtau Backups/`へ退避しました。共通設定は`Channel=alpha`、旧設定の`Beta=false`です。
 - AU音源: `~/Library/Audio/Plug-Ins/Components/OpenUtau Bridge.component`。
 - ローカル中継: `~/Library/Application Support/OpenUtau Bridge/openutau-bridge-relay`。ログイン時に起動するLaunchAgentは`~/Library/LaunchAgents/moe.kakaru.openutau-bridge-relay.plist`です。
 - ビルド元: このフォルダ。AU対応と中継のソースは`CMakeLists.txt`、`src/`、`scripts/`にあります。
 
 ## 別のApple Silicon Macへの導入
 
-[GitHubの非公開リリース](https://github.com/sotwat/openutau-logic-au/releases)から`OpenUtau-Logic-AU-0.1.570.9-alpha-macos-arm64.zip`を取得し、展開して`sh install.sh`を実行します。公式OpenUtau本体、AU、中継がユーザー領域に入り、既存ファイルはバックアップされます。詳しい条件と署名に関する注意はZIP内の`README.md`を参照してください。Intel Mac向けではありません。
+[GitHubの非公開リリース](https://github.com/sotwat/openutau-logic-au/releases)から最新版の配布ZIP `OpenUtau-Logic-AU-0.1.570.12-alpha-macos-arm64.zip` を取得し、展開して`sh install.sh`を実行します。公式OpenUtau本体、AU、中継がユーザー領域に入り、既存ファイルはバックアップされます。詳しい条件と署名に関する注意はZIP内の`README.md`を参照してください。Intel Mac向けではありません。
 
-ソースから配布ZIPを作り直すときは、公式OpenUtau `0.1.570.9-alpha`のarm64版を`/Applications/OpenUtau.app`に置き、`sh distribution/build_macos_arm64.sh`を実行します。スクリプトは実行ファイルのSHA-256を照合してからAUと中継をビルドし、`dist/`にZIPを作ります。声ライブラリや譜面は含めません。
+ソースから配布ZIPを作り直すときは、公式OpenUtau `0.1.570.12-alpha`のarm64版を`/Applications/OpenUtau AU.app`に置き、`sh distribution/build_macos_arm64.sh`を実行します。スクリプトは実行ファイルと`OpenUtau.dll`のSHA-256を照合してからAUと中継をビルドし、`dist/`にZIPを作ります。声ライブラリや譜面は含めません。
 
 ## Logic Proで使う
 
 1. Logic Proを起動し、ソフトウェア音源トラックを作ります。音源スロットで「AU音源」→「OpenUtau Bridge」→「OpenUtau Bridge」→「ステレオ」を選びます。Logicが起動済みでプラグインが表示されない場合は、プロジェクトを保存してLogicを再起動します。
-2. `/Applications/OpenUtau.app`でプロジェクトを開き、保存済みであることを確認します。`OpenUtau DAW Alpha.app`でも同じ操作ができます。
+2. `/Applications/OpenUtau.app`でプロジェクトを開き、保存済みであることを確認します。
 3. OpenUtauの「ツール」→「DAW Integration...」で「Refresh」を押し、Logic側の`OpenUtau Bridge Relay`を選んで「Connect」を押します。
 4. LogicとOpenUtauのテンポを同じ値にし、歌声のレンダリングが終わってからLogicで再生します。音量、パン、エフェクトはLogic側で調整します。
 5. OpenUtauの複数トラックを分ける場合は、LogicにAUをトラック数だけ挿し、各インスタンスの「OpenUtau Track」で対象トラックを選びます。Logicプロジェクトを開き直した後は、OpenUtau側で再接続します。
@@ -50,3 +50,7 @@ AUv2のビルドには`clap-wrapper`がAppleのAudioUnitSDKを取得します。
 同日追記: `/Applications/OpenUtau.app`も公式v0.1.570.9-alphaに更新しました。公式DMGのSHA-256をGitHub Releasesの値と照合し、両アプリの実行ファイルと`OpenUtau.dll`が一致することを確認しました。通常版は「OpenUtau v0.1.570.9 (alpha)」として起動し、「DAW Integration...」メニューが表示されました。旧アプリと更新前の設定は`~/Applications/OpenUtau Backups/`に保存しました。
 
 配布版追記: Python不要のネイティブ中継に切り替えました。このMacのLogic Pro 12.3.1でAUが中継に接続し、OpenUtauのDAW Integration画面でAPI 1.2 Compatibleから「Connected to 1 plugin(s).」へ移行することを確認しました。別のMacでの実機検証は未実施です。
+
+2026-09-27追記: `/Applications/OpenUtau AU.app`を公式0.1.570.11-alphaへ更新。DMG SHA-256 `9b0e95b7eb1782b2e5401d2731914c869c8b13058bf9a76411cc80fc5f72d864`を公式リリースの値と照合。起動画面の版表示と「DAW Integration...」メニューを確認し、起動時に更新通知は表示されなかった。ブリッジAUの`auval`、C++テスト、リレーのテストは合格。新しい版とLogic Proとの実接続は未確認。配布ZIPのSHA-256は`04691266721570203bdb879cff93c163dee4ea881699f451b1c2dd32fd0f5d86`。
+
+2026-09-28追記: 更新通知の再発を確認。共通設定に旧`Beta=true`が残ると起動時に`Channel=alpha`が`beta`へ上書きされることがOpenUtau公式ソースで判明。両アプリを公式0.1.570.12-alphaへ更新し、`Beta=false`、`Channel=alpha`へ修正。通常版を起動して更新通知が出ないことを確認。配布インストーラも旧`Beta`を無効に変更した。

@@ -10,7 +10,7 @@ test -d "$payload/OpenUtau.app" || { echo 'Incomplete package: OpenUtau.app is m
     shasum -a 256 -c SHA256SUMS
 ) || { echo 'Package verification failed; installation stopped.' >&2; exit 1; }
 
-app="$HOME/Applications/OpenUtau.app"
+app="$HOME/Applications/OpenUtau AU.app"
 component="$HOME/Library/Audio/Plug-Ins/Components/OpenUtau Bridge.component"
 relay="$HOME/Library/Application Support/OpenUtau Bridge/openutau-bridge-relay"
 agent="$HOME/Library/LaunchAgents/moe.kakaru.openutau-bridge-relay.plist"
@@ -32,7 +32,7 @@ done
 if [ -e "$prefs" ]; then
     ditto "$prefs" "$backup/prefs.json"
 else
-    printf '{"Channel":"alpha","Beta":true}\n' > "$prefs"
+    printf '{"Channel":"alpha","Beta":false}\n' > "$prefs"
 fi
 
 ditto "$payload/OpenUtau.app" "$app"
@@ -46,7 +46,7 @@ fi
 codesign --verify --deep --strict "$component"
 codesign --verify --strict "$relay"
 plutil -replace Channel -string alpha "$prefs"
-plutil -replace Beta -bool YES "$prefs"
+plutil -replace Beta -bool NO "$prefs"
 
 printf '{}' > "$agent"
 /usr/libexec/PlistBuddy -c 'Add :Label string moe.kakaru.openutau-bridge-relay' "$agent"
