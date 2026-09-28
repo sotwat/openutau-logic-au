@@ -37,6 +37,9 @@ fi
 ditto "$official_app" "$output_app"
 ditto "$source_dir/OpenUtau/bin/Release/net10.0/osx-arm64/OpenUtau.dll" \
     "$output_app/Contents/MacOS/OpenUtau.dll"
+clang -dynamiclib -fobjc-arc -fblocks -framework AppKit -arch arm64 \
+    "$repo/native/openutau_pinch_axis.m" \
+    -o "$output_app/Contents/MacOS/libOpenUtauPinchAxis.dylib"
 codesign --force --deep --sign - "$output_app"
 codesign --verify --deep --strict "$output_app"
 echo "Built $output_app"

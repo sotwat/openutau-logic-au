@@ -13,10 +13,44 @@ index 7ed63f8..aef9d8e 100644
            <ContextMenu ItemsSource="{Binding NotesContextMenuItems}"
                         Opening="NotesContextMenuOpening">
 diff --git a/OpenUtau/Controls/PianoRoll.axaml.cs b/OpenUtau/Controls/PianoRoll.axaml.cs
-index 23ad5f2..eeef125 100644
+index 23ad5f2..c411f98 100644
 --- a/OpenUtau/Controls/PianoRoll.axaml.cs
 +++ b/OpenUtau/Controls/PianoRoll.axaml.cs
-@@ -1111,6 +1111,23 @@ public void NotesCanvasDoubleTapped(object sender, TappedEventArgs args) {
+@@ -2,6 +2,7 @@
+ using System.Collections.Generic;
+ using System.ComponentModel;
+ using System.Linq;
++using System.Runtime.InteropServices;
+ using System.Threading;
+ using System.Threading.Tasks;
+ using Avalonia;
+@@ -56,8 +57,25 @@ public Thickness OffScreenMargin {
+             set => SetValue(OffScreenMarginProperty, value);
+         }
+ 
++        [DllImport("libOpenUtauPinchAxis.dylib")]
++        private static extern int ou_pinch_start();
++
++        [DllImport("libOpenUtauPinchAxis.dylib")]
++        private static extern int ou_pinch_axis();
++
++        private static bool pinchAxisAvailable;
++
+         public PianoRoll(PianoRollViewModel model) {
+             InitializeComponent();
++            if (OS.IsMacOS()) {
++                try {
++                    pinchAxisAvailable = ou_pinch_start() != 0;
++                } catch (DllNotFoundException) {
++                    pinchAxisAvailable = false;
++                } catch (EntryPointNotFoundException) {
++                    pinchAxisAvailable = false;
++                }
++            }
+             DataContext = ViewModel = model;
+             ValueTip.IsVisible = false;
+             SetPenToolIcon();
+@@ -1111,6 +1129,28 @@ public void NotesCanvasDoubleTapped(object sender, TappedEventArgs args) {
              }
          }
  
@@ -31,8 +65,13 @@ index 23ad5f2..eeef125 100644
 +                Math.Clamp(point.X / size.Width, 0, 1),
 +                Math.Clamp(point.Y / size.Height, 0, 1));
 +            var zoom = args.Delta.Y / 2;
-+            ViewModel.NotesViewModel.OnXZoomed(position, zoom);
-+            ViewModel.NotesViewModel.OnYZoomed(position, zoom);
++            int axis = pinchAxisAvailable ? ou_pinch_axis() : 0;
++            if (axis != 2) {
++                ViewModel.NotesViewModel.OnXZoomed(position, zoom);
++            }
++            if (axis != 1) {
++                ViewModel.NotesViewModel.OnYZoomed(position, zoom);
++            }
 +            LyricBox?.EndEdit();
 +            args.Handled = true;
 +        }
