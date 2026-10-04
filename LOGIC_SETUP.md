@@ -4,16 +4,16 @@
 
 ## このMacでの配置
 
-- OpenUtau: `/Applications/OpenUtau.app`は公式v0.1.570.12-alphaです。`/Applications/OpenUtau AU.app`は同版を元にピアノロールのトラックパッド・ピンチ拡大縮小を追加した改造版です。指を横に広げると時間軸、縦に広げると音程軸を拡大します。タッチ位置が取得できない場合は両軸を拡大します。Logic連携とピンチ操作には後者を使います。共通設定は`Channel=alpha`、旧設定の`Beta=false`です。
+- OpenUtau: `/Applications/OpenUtau.app`は公式v0.1.572.1-alphaです。`/Applications/OpenUtau AU.app`は同版を元にピアノロールのトラックパッド・ピンチ拡大縮小を追加した改造版です。指を横に広げると時間軸、縦に広げると音程軸を拡大します。タッチ位置が取得できない場合は両軸を拡大します。Logic連携とピンチ操作には後者を使います。共通設定は`Channel=alpha`、旧設定の`Beta=false`です。
 - AU音源: `~/Library/Audio/Plug-Ins/Components/OpenUtau Bridge.component`。
 - ローカル中継: `~/Library/Application Support/OpenUtau Bridge/openutau-bridge-relay`。ログイン時に起動するLaunchAgentは`~/Library/LaunchAgents/moe.kakaru.openutau-bridge-relay.plist`です。
 - ビルド元: このフォルダ。AU対応と中継のソースは`CMakeLists.txt`、`src/`、`scripts/`にあります。
 
 ## 別のApple Silicon Macへの導入
 
-[GitHubの非公開リリース](https://github.com/sotwat/openutau-logic-au/releases)から最新版の配布ZIP `OpenUtau-Logic-AU-0.1.570.12-alpha-pinch-axis.1-macos-arm64.zip` を取得し、展開して`sh install.sh`を実行します。ピンチ対応OpenUtau AU、AU音源、中継がユーザー領域に入り、既存ファイルはバックアップされます。詳しい条件と署名に関する注意はZIP内の`README.md`を参照してください。Intel Mac向けではありません。
+[GitHubの非公開リリース](https://github.com/sotwat/openutau-logic-au/releases)から最新版の配布ZIP `OpenUtau-Logic-AU-0.1.572.1-alpha-pinch-axis.1-macos-arm64.zip` を取得し、展開して`sh install.sh`を実行します。ピンチ対応OpenUtau AU、AU音源、中継がユーザー領域に入り、既存ファイルはバックアップされます。詳しい条件と署名に関する注意はZIP内の`README.md`を参照してください。Intel Mac向けではありません。
 
-ソースから配布ZIPを作り直すときは、公式OpenUtau `0.1.570.12-alpha`のソースとarm64版アプリを用意し、`scripts/build_openutau_au_pinch.sh`でピンチ対応アプリを生成します。`OPENUTAU_SOURCE`には公式タグのチェックアウト、`OPENUTAU_PINCH_APP`には新規出力先、`DOTNET`には.NET 10 SDKを指定します。検証済みアプリを`/Applications/OpenUtau AU.app`に置き、`sh distribution/build_macos_arm64.sh`を実行します。後者は実行ファイルと`OpenUtau.dll`のSHA-256を照合してからAUと中継をビルドし、`dist/`にZIPを作ります。声ライブラリや譜面は含めません。
+ソースから配布ZIPを作り直すときは、公式OpenUtau `0.1.572.1-alpha`のソースとarm64版アプリを用意し、`scripts/build_openutau_au_pinch.sh`でピンチ対応アプリを生成します。`OPENUTAU_SOURCE`には公式タグのチェックアウト、`OPENUTAU_PINCH_APP`には新規出力先、`DOTNET`には.NET 10 SDKを指定します。検証済みアプリを`/Applications/OpenUtau AU.app`に置き、`sh distribution/build_macos_arm64.sh`を実行します。後者は実行ファイルと`OpenUtau.dll`のSHA-256を照合してからAUと中継をビルドし、`dist/`にZIPを作ります。声ライブラリや譜面は含めません。
 
 ## Logic Proで使う
 
@@ -56,3 +56,5 @@ AUv2のビルドには`clap-wrapper`がAppleのAudioUnitSDKを取得します。
 2026-09-28追記: 更新通知の再発を確認。共通設定に旧`Beta=true`が残ると起動時に`Channel=alpha`が`beta`へ上書きされることがOpenUtau公式ソースで判明。両アプリを公式0.1.570.12-alphaへ更新し、`Beta=false`、`Channel=alpha`へ修正。通常版を起動して更新通知が出ないことを確認。配布インストーラも旧`Beta`を無効に変更した。
 
 同日追記: 旧OpenUtauアプリ本体7つをゴミ箱へ移動。`/Applications`、`~/Applications`、Downloads、Desktop、Documentsで残るOpenUtauアプリは上記2つのみ。音源、譜面、設定、配布ZIPは変更していません。
+
+2026-10-04追記: macOSの生のタッチイベントから指の移動を取得する方式へ変更し、ユーザーが横ピンチの時間軸ズームと縦ピンチの音程軸ズームを個別に確認。公式0.1.572.1-alphaへ移植。OpenUtau AUは起動時の自動更新チェックを無効にし、公式版による改造部分の上書きを防ぐ。通常のOpenUtau.appは公式最新版。

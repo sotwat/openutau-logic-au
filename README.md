@@ -3,7 +3,7 @@
 This branch adds an Audio Unit instrument and a native macOS relay for Logic Pro.
 The maintained repository is <https://github.com/sotwat/openutau-logic-au>.
 For Apple Silicon installation and the tested DAW workflow, see
-[LOGIC_SETUP.md](LOGIC_SETUP.md). A self-contained ZIP with OpenUtau `0.1.570.12-alpha`
+[LOGIC_SETUP.md](LOGIC_SETUP.md). A self-contained ZIP with OpenUtau `0.1.572.1-alpha`
 and a piano-roll trackpad pinch zoom patch that separates horizontal time zoom
 from vertical pitch zoom when macOS supplies touch positions,
 the AU, and the relay can be built with `sh distribution/build_macos_arm64.sh`.

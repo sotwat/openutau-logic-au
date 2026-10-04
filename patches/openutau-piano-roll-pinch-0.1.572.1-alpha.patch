@@ -1,0 +1,95 @@
+diff --git a/OpenUtau/Controls/PianoRoll.axaml b/OpenUtau/Controls/PianoRoll.axaml
+index 7ed63f8..aef9d8e 100644
+--- a/OpenUtau/Controls/PianoRoll.axaml
++++ b/OpenUtau/Controls/PianoRoll.axaml
+@@ -179,7 +179,8 @@
+                      PointerMoved="NotesCanvasPointerMoved"
+                      PointerReleased="NotesCanvasPointerReleased"
+                      DoubleTapped="NotesCanvasDoubleTapped"
+-                     PointerWheelChanged="NotesCanvasPointerWheelChanged">
++                     PointerWheelChanged="NotesCanvasPointerWheelChanged"
++                     PointerTouchPadGestureMagnify="NotesCanvasTouchPadMagnify">
+         <c:NotesCanvas.ContextMenu>
+           <ContextMenu ItemsSource="{Binding NotesContextMenuItems}"
+                        Opening="NotesContextMenuOpening">
+diff --git a/OpenUtau/Controls/PianoRoll.axaml.cs b/OpenUtau/Controls/PianoRoll.axaml.cs
+index 9e0e115..de1562b 100644
+--- a/OpenUtau/Controls/PianoRoll.axaml.cs
++++ b/OpenUtau/Controls/PianoRoll.axaml.cs
+@@ -2,6 +2,7 @@
+ using System.Collections.Generic;
+ using System.ComponentModel;
+ using System.Linq;
++using System.Runtime.InteropServices;
+ using System.Threading;
+ using System.Threading.Tasks;
+ using Avalonia;
+@@ -61,8 +62,25 @@ public Thickness OffScreenMargin {
+             set => SetValue(OffScreenMarginProperty, value);
+         }
+ 
++        [DllImport("libOpenUtauPinchAxis.dylib")]
++        private static extern int ou_pinch_start();
++
++        [DllImport("libOpenUtauPinchAxis.dylib")]
++        private static extern int ou_pinch_axis();
++
++        private static bool pinchAxisAvailable;
++
+         public PianoRoll(PianoRollViewModel model) {
+             InitializeComponent();
++            if (OS.IsMacOS()) {
++                try {
++                    pinchAxisAvailable = ou_pinch_start() != 0;
++                } catch (DllNotFoundException) {
++                    pinchAxisAvailable = false;
++                } catch (EntryPointNotFoundException) {
++                    pinchAxisAvailable = false;
++                }
++            }
+             DataContext = ViewModel = model;
+             var smoothViewport = new SmoothViewport(this);
+             hScroll = smoothViewport.Scroll(HScrollBar);
+@@ -1133,6 +1151,27 @@ public void NotesCanvasDoubleTapped(object sender, TappedEventArgs args) {
+             }
+         }
+ 
++        public void NotesCanvasTouchPadMagnify(object sender, PointerDeltaEventArgs args) {
++            var control = (Control)sender;
++            var size = control.Bounds.Size;
++            if (size.Width <= 0 || size.Height <= 0 || args.Delta.Y == 0) {
++                return;
++            }
++            var point = args.GetPosition(control);
++            var position = new Point(
++                Math.Clamp(point.X / size.Width, 0, 1),
++                Math.Clamp(point.Y / size.Height, 0, 1));
++            var zoom = args.Delta.Y / 2;
++            int axis = pinchAxisAvailable ? ou_pinch_axis() : 0;
++            if (axis != 2) {
++                ViewModel.NotesViewModel.OnXZoomed(position, zoom);
++            }
++            if (axis != 1) {
++                ViewModel.NotesViewModel.OnYZoomed(position, zoom);
++            }
++            LyricBox?.EndEdit();
++            args.Handled = true;
++        }
+         public void NotesCanvasPointerWheelChanged(object sender, PointerWheelEventArgs args) {
+             LyricBox?.EndEdit();
+             var control = (Control)sender;
+diff --git a/OpenUtau/Views/UpdaterDialog.axaml.cs b/OpenUtau/Views/UpdaterDialog.axaml.cs
+index 92736b2..070bc95 100644
+--- a/OpenUtau/Views/UpdaterDialog.axaml.cs
++++ b/OpenUtau/Views/UpdaterDialog.axaml.cs
+@@ -19,8 +19,8 @@ void OnClosing(object sender, WindowClosingEventArgs e) {
+             ViewModel.OnClosing();
+         }
+ 
+-        /// <summary>Whether CheckForUpdate runs. UI tests turn it off to stay offline.</summary>
+-        public static bool CheckForUpdateEnabled { get; set; } = true;
++        // The AU app is updated through its bridge distribution.
++        public static bool CheckForUpdateEnabled { get; set; } = false;
+ 
+         public static void CheckForUpdate(Action<Window> showDialog, Action closeApplication, TaskScheduler scheduler) {
+             if (!CheckForUpdateEnabled) {

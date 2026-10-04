@@ -1,6 +1,6 @@
 # OpenUtau + Logic Pro (Apple Silicon)
 
-This archive contains an OpenUtau `0.1.570.12-alpha` app with piano-roll trackpad
+This archive contains an OpenUtau `0.1.572.1-alpha` app with piano-roll trackpad
 pinch zoom added. Horizontal finger spread zooms time; vertical finger spread zooms pitch.
 If touch positions are unavailable, the gesture zooms both axes. The archive also contains
 the OpenUtau Bridge Audio Unit and a native relay used by Logic Pro's AU host. It does
@@ -11,7 +11,7 @@ not contain singers, projects, or user settings.
 On an Apple Silicon Mac, extract the ZIP and run in Terminal:
 
 ```sh
-cd /path/to/OpenUtau-Logic-AU-0.1.570.12-alpha-pinch-axis.1-macos-arm64
+cd /path/to/OpenUtau-Logic-AU-0.1.572.1-alpha-pinch-axis.1-macos-arm64
 sh install.sh
 ```
 
@@ -29,6 +29,9 @@ OpenUtau, then choose **Tools → DAW Integration → Refresh → OpenUtau Bridg
 Connect**. Set matching tempos in Logic and OpenUtau. Reconnect after reopening a
 Logic project. See `LOGIC_SETUP.md` in the source repository for details.
 
+The AU app does not check for upstream updates at startup. Update it with a new
+bridge package so the pinch patch is retained.
+
 ## Signing and trust
 
 The AU and relay have ad hoc signatures. This archive is **not Developer ID signed
@@ -45,7 +48,7 @@ confirm your specific macOS and Logic configuration.
 
 ## Sources and licenses
 
-- OpenUtau: <https://github.com/openutau/OpenUtau/releases/tag/0.1.570.12-alpha>
+- OpenUtau: <https://github.com/openutau/OpenUtau/releases/tag/0.1.572.1-alpha>
   (MIT; `OPENUTAU_LICENSE.txt`). The piano-roll change is in the source repository's
   `patches/` directory and the macOS touch helper is in `native/`. They can be rebuilt with `scripts/build_openutau_au_pinch.sh`.
 - OpenUtau Bridge and this distribution: source repository linked from the GitHub
