@@ -15,3 +15,7 @@ CMakeUserPresets.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Local OpenUtau source and verification logs
+openutau-source/
+*-build.log

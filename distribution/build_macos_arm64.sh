@@ -3,9 +3,9 @@ set -eu
 
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 app=${OPENUTAU_APP:-/Applications/OpenUtau AU.app}
-version=0.1.572.1-alpha-pinch-axis.1
-expected_app_sha=0544b73956e230d730306d67ede3639ecfad9ba6c0498f27dc31d2c81874d536
-expected_dll_sha=78bb4011643abeae84cb5c03e460df8bf9fde0c3b72a359d58ad4789ada685c0
+version=0.1.572.1-alpha-one-click.1
+expected_app_sha=b1c609a8bab64c7ced8928fe946ae0ee821e3ebffc809372bb6c1852585634a7
+expected_dll_sha=5e65e19a49f7b2b2b86870ada0ce0a535ae7d3a2a30ce0229f86dad825e37307
 expected_axis_sha=966d8416cad2014ecc28b558adcd20b0064056e5f728f896a09ef91587225900
 name="OpenUtau-Logic-AU-${version}-macos-arm64"
 
@@ -33,26 +33,48 @@ mkdir -p "$repo/dist"
 staging_root=$(mktemp -d "$repo/dist/.stage.XXXXXX")
 trap 'rm -rf "$staging_root"' EXIT
 stage="$staging_root/$name"
-mkdir -p "$stage/payload"
-ditto "$app" "$stage/payload/OpenUtau.app"
-ditto "$repo/build/assets/OpenUtau Bridge.component" "$stage/payload/OpenUtau Bridge.component"
-ditto "$repo/build/openutau-bridge-relay" "$stage/payload/openutau-bridge-relay"
-codesign --force --deep --sign - --timestamp=none "$stage/payload/OpenUtau Bridge.component"
-codesign --force --sign - --timestamp=none "$stage/payload/openutau-bridge-relay"
-codesign --verify --deep --strict "$stage/payload/OpenUtau Bridge.component"
-codesign --verify --strict "$stage/payload/openutau-bridge-relay"
+setup="$stage/セットアップ.app"
+resources="$setup/Contents/Resources"
+mkdir -p "$resources/payload" "$setup/Contents/MacOS"
+cat > "$setup/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>moe.kakaru.openutau-logic-setup</string>
+<key>CFBundleName</key><string>OpenUtau Logic Setup</string>
+<key>CFBundleDisplayName</key><string>セットアップ</string>
+<key>CFBundleExecutable</key><string>Setup</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>1.0.0</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>LSMinimumSystemVersion</key><string>11.0</string>
+<key>NSHighResolutionCapable</key><true/>
+</dict></plist>
+PLIST
+clang -fobjc-arc -fblocks -arch arm64 -mmacosx-version-min=11.0 -framework Cocoa \
+    "$repo/distribution/setup_macos.m" -o "$setup/Contents/MacOS/Setup"
+ditto "$app" "$resources/payload/OpenUtau.app"
+ditto "$repo/build/assets/OpenUtau Bridge.component" "$resources/payload/OpenUtau Bridge.component"
+ditto "$repo/build/openutau-bridge-relay" "$resources/payload/openutau-bridge-relay"
+codesign --force --deep --sign - --timestamp=none "$resources/payload/OpenUtau Bridge.component"
+codesign --force --sign - --timestamp=none "$resources/payload/openutau-bridge-relay"
+codesign --verify --deep --strict "$resources/payload/OpenUtau Bridge.component"
+codesign --verify --strict "$resources/payload/openutau-bridge-relay"
 
-ditto "$repo/distribution/install_macos_arm64.sh" "$stage/install.sh"
+ditto "$repo/distribution/install_macos_arm64.sh" "$resources/install.sh"
 ditto "$repo/distribution/OPENUTAU_LICENSE.txt" "$stage/OPENUTAU_LICENSE.txt"
 ditto "$repo/LICENSE" "$stage/BRIDGE_LICENSE.txt"
 ditto "$repo/distribution/README.md" "$stage/README.md"
 (
-    cd "$stage"
+    cd "$resources"
     shasum -a 256 'payload/OpenUtau.app/Contents/MacOS/OpenUtau' \
         'payload/OpenUtau.app/Contents/MacOS/OpenUtau.dll' \
         'payload/OpenUtau.app/Contents/MacOS/libOpenUtauPinchAxis.dylib' \
         'payload/OpenUtau Bridge.component/Contents/MacOS/OpenUtau Bridge' \
         'payload/openutau-bridge-relay' > SHA256SUMS
 )
+codesign --force --sign - --timestamp=none "$setup"
+codesign --verify --deep --strict "$setup"
+(cd "$stage" && shasum -a 256 "セットアップ.app/Contents/MacOS/Setup" > SETUP-SHA256.txt)
 ditto -c -k --sequesterRsrc --keepParent "$stage" "$repo/dist/$name.zip"
 shasum -a 256 "$repo/dist/$name.zip"

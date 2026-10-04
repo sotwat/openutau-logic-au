@@ -7,7 +7,7 @@ For Apple Silicon installation and the tested DAW workflow, see
 and a piano-roll trackpad pinch zoom patch that separates horizontal time zoom
 from vertical pitch zoom when macOS supplies touch positions,
 the AU, and the relay can be built with `sh distribution/build_macos_arm64.sh`.
-The ZIP installer and its trust limitations are documented in
+Open the bundled セットアップ.app to install and validate the AU automatically; no Terminal commands are needed. The setup app and its trust limitations are documented in
 [distribution/README.md](distribution/README.md).
 
 [![CI](https://github.com/KakaruHayate/openutau-vst-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/KakaruHayate/openutau-vst-bridge/actions/workflows/ci.yml) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/KakaruHayate/openutau-vst-bridge) ![Format: VST3 | CLAP](https://img.shields.io/badge/Format-VST3%20%7C%20CLAP-blue)  [![License](https://img.shields.io/github/license/KakaruHayate/openutau-vst-bridge?style=flat&color=blue)](https://github.com/KakaruHayate/openutau-vst-bridge/blob/main/LICENSE)

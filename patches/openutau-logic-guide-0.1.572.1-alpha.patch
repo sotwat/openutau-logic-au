@@ -1,0 +1,145 @@
+diff --git a/OpenUtau/ViewModels/DawIntegrationViewModel.cs b/OpenUtau/ViewModels/DawIntegrationViewModel.cs
+index e44bbcc..c41a1e0 100644
+--- a/OpenUtau/ViewModels/DawIntegrationViewModel.cs
++++ b/OpenUtau/ViewModels/DawIntegrationViewModel.cs
+@@ -78,13 +78,16 @@ public partial class DawIntegrationViewModel : ViewModelBase, IDisposable {
+         [Reactive] public partial int ConnectedCount { get; set; }
+         [Reactive] public partial bool Vst3Installed { get; set; }
+         [Reactive] public partial bool ClapInstalled { get; set; }
++        [Reactive] public partial bool AuInstalled { get; set; }
+         [Reactive] public partial string InstallStatus { get; set; } = string.Empty;
+         /// <summary>Whether the floating how-to-use card is shown over the dialog.</summary>
+         [Reactive] public partial bool IsGuideOpen { get; set; }
+ 
+         /// <summary>Whether any bridge format is installed. The floating guide only auto-opens
+         /// while this is false — an installed setup needs "load it in your DAW", not a tour.</summary>
+-        public bool InstallDetected => Vst3Installed || ClapInstalled;
++        public bool InstallDetected => AuInstalled || Vst3Installed || ClapInstalled;
++
++        public string AuStateText => AuInstalled ? "Logic用AU：インストール済み" : "Logic用AU：未インストール。配布のセットアップ.appを開いてください。";
+ 
+         /// <summary>Manual-download link label with this machine's OS name, e.g. "Windows".</summary>
+         public string GuideDownloadText => string.Format(
+@@ -126,6 +129,12 @@ public partial class DawIntegrationViewModel : ViewModelBase, IDisposable {
+ 
+         /// <summary>Re-probes the standard plugin folders. Cheap; safe to call often.</summary>
+         void RefreshInstallState() {
++            AuInstalled = OS.IsMacOS() && (System.IO.Directory.Exists(System.IO.Path.Combine(
++                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
++                "Library/Audio/Plug-Ins/Components/OpenUtau Bridge.component")) ||
++                System.IO.Directory.Exists("/Library/Audio/Plug-Ins/Components/OpenUtau Bridge.component"));
++            this.RaisePropertyChanged(nameof(AuStateText));
++            this.RaisePropertyChanged(nameof(InstallDetected));
+             Vst3Installed = DawBridgeInstaller.FindInstalled(DawBridgeFormat.Vst3) != null;
+             ClapInstalled = DawBridgeInstaller.FindInstalled(DawBridgeFormat.Clap) != null;
+             this.RaisePropertyChanged(nameof(Vst3StateText));
+@@ -225,7 +234,9 @@ public async Task RefreshAsync() {
+             if (Servers.Count == 0 && ConnectedCount == 0) {
+                 // Different guidance depending on whether the plugin is installed at all:
+                 // an installed-but-not-running setup needs "load it in your DAW", not "install it".
+-                Status = ThemeManager.GetString(Vst3Installed || ClapInstalled
++                Status = AuInstalled
++                    ? "Logicのソフトウェア音源トラックにOpenUtau Bridgeを入れてから、Refreshを押してください。"
++                    : ThemeManager.GetString(Vst3Installed || ClapInstalled
+                     ? "dawintegration.none.installed"
+                     : "dawintegration.none");
+             }
+diff --git a/OpenUtau/Views/DawIntegrationDialog.axaml b/OpenUtau/Views/DawIntegrationDialog.axaml
+index 07c803d..e612dd2 100644
+--- a/OpenUtau/Views/DawIntegrationDialog.axaml
++++ b/OpenUtau/Views/DawIntegrationDialog.axaml
+@@ -66,89 +66,11 @@
+                     Background="Transparent" BorderThickness="0"
+                     Click="OnCloseGuide"/>
+           </Grid>
+-          <ScrollViewer Grid.Row="1" Margin="0,6,0,0"
+-                        HorizontalScrollBarVisibility="Disabled">
+-            <StackPanel Spacing="6">
+-              <TextBlock Text="{DynamicResource dawintegration.guide.what}" TextWrapping="Wrap"/>
+-
+-              <TextBlock FontWeight="Bold" Margin="0,4,0,0"
+-                         Text="{DynamicResource dawintegration.guide.install.header}"/>
+-              <StackPanel Orientation="Horizontal" Spacing="16">
+-                <StackPanel Orientation="Horizontal" Spacing="4">
+-                  <TextBlock Text="VST3:"/>
+-                  <TextBlock Text="{Binding Vst3StateText}"/>
+-                </StackPanel>
+-                <StackPanel Orientation="Horizontal" Spacing="4">
+-                  <TextBlock Text="CLAP:"/>
+-                  <TextBlock Text="{Binding ClapStateText}"/>
+-                </StackPanel>
+-              </StackPanel>
+-                  <StackPanel Orientation="Horizontal" Spacing="8">
+-                    <Button Content="{Binding Vst3ButtonText}"
+-                            Click="OnInstallVst3" IsEnabled="{Binding Vst3InstallEnabled}"/>
+-                    <Button Content="{Binding ClapButtonText}"
+-                            Click="OnInstallClap" IsEnabled="{Binding ClapInstallEnabled}"/>
+-                  </StackPanel>
+-              <TextBlock Text="{Binding InstallStatus}" TextWrapping="Wrap"/>
+-
+-              <TextBlock FontWeight="Bold" Margin="0,4,0,0"
+-                         Text="{DynamicResource dawintegration.guide.caps.header}"/>
+-              <Grid ColumnDefinitions="Auto,*">
+-                <TextBlock Text="•" Margin="0,0,6,0"/>
+-                <TextBlock Grid.Column="1" TextWrapping="Wrap"
+-                           Text="{DynamicResource dawintegration.guide.caps.1}"/>
+-              </Grid>
+-              <Grid ColumnDefinitions="Auto,*">
+-                <TextBlock Text="•" Margin="0,0,6,0"/>
+-                <TextBlock Grid.Column="1" TextWrapping="Wrap"
+-                           Text="{DynamicResource dawintegration.guide.caps.2}"/>
+-              </Grid>
+-              <Grid ColumnDefinitions="Auto,*">
+-                <TextBlock Text="•" Margin="0,0,6,0"/>
+-                <TextBlock Grid.Column="1" TextWrapping="Wrap"
+-                           Text="{DynamicResource dawintegration.guide.caps.3}"/>
+-              </Grid>
+-              <Grid ColumnDefinitions="Auto,*">
+-                <TextBlock Text="•" Margin="0,0,6,0"/>
+-                <TextBlock Grid.Column="1" TextWrapping="Wrap"
+-                           Text="{DynamicResource dawintegration.guide.caps.4}"/>
+-              </Grid>
+-
+-              <TextBlock FontWeight="Bold" Margin="0,4,0,0"
+-                         Text="{DynamicResource dawintegration.guide.scope.header}"/>
+-              <Grid ColumnDefinitions="Auto,*">
+-                <TextBlock Text="•" Margin="0,0,6,0"/>
+-                <TextBlock Grid.Column="1" TextWrapping="Wrap"
+-                           Text="{DynamicResource dawintegration.guide.scope.1}"/>
+-              </Grid>
+-              <Grid ColumnDefinitions="Auto,*">
+-                <TextBlock Text="•" Margin="0,0,6,0"/>
+-                <TextBlock Grid.Column="1" TextWrapping="Wrap"
+-                           Text="{DynamicResource dawintegration.guide.scope.2}"/>
+-              </Grid>
+-              <Grid ColumnDefinitions="Auto,*">
+-                <TextBlock Text="•" Margin="0,0,6,0"/>
+-                <TextBlock Grid.Column="1" TextWrapping="Wrap"
+-                           Text="{DynamicResource dawintegration.guide.scope.3}"/>
+-              </Grid>
+-
+-              <TextBlock FontWeight="Bold" Margin="0,4,0,0"
+-                         Text="{DynamicResource dawintegration.guide.steps.header}"/>
+-              <TextBlock TextWrapping="Wrap" Text="{DynamicResource dawintegration.guide.step1}"/>
+-              <TextBlock TextWrapping="Wrap" Margin="12,0,0,0"
+-                         FontFamily="Consolas, Menlo, monospace"
+-                         Text="{Binding GuideInstallPaths}"/>
+-              <TextBlock TextWrapping="Wrap" Text="{DynamicResource dawintegration.guide.step2}"/>
+-              <TextBlock TextWrapping="Wrap" Text="{DynamicResource dawintegration.guide.step3}"/>
+-
+-              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+-                <Button Content="{DynamicResource dawintegration.guide.manual}" Click="OnGuideManual"/>
+-                <Button Content="{DynamicResource dawintegration.guide.manual.zh}" Click="OnGuideManualZh"/>
+-                <Button Content="{DynamicResource dawintegration.guide.releases}" Click="OnGuideReleases"/>
+-                <Button Content="{Binding GuideDownloadText}" Click="OnGuideDownload"/>
+-              </StackPanel>
+-            </StackPanel>
+-          </ScrollViewer>
++          <StackPanel Grid.Row="1" Margin="0,12,0,0" Spacing="12">
++            <TextBlock Text="{Binding AuStateText}" TextWrapping="Wrap"/>
++            <TextBlock Text="Logicのソフトウェア音源トラックで、AU音源 → OpenUtau Bridge → ステレオを選びます。" TextWrapping="Wrap"/>
++            <TextBlock Text="この画面のRefreshでOpenUtau Bridge Relayを選び、Connectを押してください。LogicとOpenUtauのテンポを合わせてからLogicで再生します。" TextWrapping="Wrap"/>
++          </StackPanel>
+         </Grid>
+       </Border>
+     </Grid>

@@ -27,6 +27,14 @@ elif ! git -C "$source_dir" apply --reverse --check "$patch" 2>/dev/null; then
     exit 1
 fi
 
+guide_patch="$repo/patches/openutau-logic-guide-0.1.572.1-alpha.patch"
+if git -C "$source_dir" apply --check "$guide_patch" 2>/dev/null; then
+    git -C "$source_dir" apply "$guide_patch"
+elif ! git -C "$source_dir" apply --reverse --check "$guide_patch" 2>/dev/null; then
+    echo 'Source differs from the expected Logic guide patch state.' >&2
+    exit 1
+fi
+
 (
     cd "$source_dir"
     "$dotnet" build OpenUtau -c Release -r osx-arm64 \

@@ -1,58 +1,27 @@
-# OpenUtau + Logic Pro (Apple Silicon)
+# OpenUtau・Logic セットアップ（Apple Silicon）
 
-This archive contains an OpenUtau `0.1.572.1-alpha` app with piano-roll trackpad
-pinch zoom added. Horizontal finger spread zooms time; vertical finger spread zooms pitch.
-If touch positions are unavailable, the gesture zooms both axes. The archive also contains
-the OpenUtau Bridge Audio Unit and a native relay used by Logic Pro's AU host. It does
-not contain singers, projects, or user settings.
+ZIPを展開して「セットアップ.app」を開くと、インストールが始まります。ターミナル操作は不要です。
 
-## Install
+OpenUtau AU、OpenUtau BridgeのAU音源、中継を配置し、AUの登録・検証と中継の起動まで自動で行います。「セットアップ完了」が表示されたら導入完了です。既存ファイルはユーザーのApplications内のOpenUtau Bridge Backupsに保存します。歌声ライブラリや譜面は含みません。
 
-On an Apple Silicon Mac, extract the ZIP and run in Terminal:
+## Logicで使う
 
-```sh
-cd /path/to/OpenUtau-Logic-AU-0.1.572.1-alpha-pinch-axis.1-macos-arm64
-sh install.sh
-```
+Logicが起動中なら、プロジェクトを保存して再起動してください。ソフトウェア音源トラックの音源スロットで「AU音源 → OpenUtau Bridge → OpenUtau Bridge → ステレオ」を選びます。
 
-The installer checks SHA-256 hashes before changing files. It installs into the
-current user's `~/Applications` and `~/Library`, backs up any files it replaces in
-`~/Applications/OpenUtau Bridge Backups`, sets OpenUtau's update channel to Alpha,
-and starts the relay at login. Run the installer while logged into the account that
-will use Logic Pro. Logic Pro must already be installed.
+OpenUtau AUで保存済みの譜面を開き、「ツール → DAW Integration → Refresh」でOpenUtau Bridge Relayを選んでConnectを押します。LogicとOpenUtauのテンポを合わせてからLogicで再生してください。
 
-If an older `/Applications/OpenUtau.app` also exists, launch the newly installed
-`~/Applications/OpenUtau AU.app` explicitly. Do not run both copies at once.
+## 対応環境と初回の確認
 
-In Logic, add **OpenUtau Bridge** as a stereo AU instrument. Open a saved USTX in
-OpenUtau, then choose **Tools → DAW Integration → Refresh → OpenUtau Bridge Relay →
-Connect**. Set matching tempos in Logic and OpenUtau. Reconnect after reopening a
-Logic project. See `LOGIC_SETUP.md` in the source repository for details.
+Apple Silicon Mac・Logic Pro向けです。Logic Proは別途必要です。インストール先は現在のユーザーのApplicationsとLibraryです。
 
-The AU app does not check for upstream updates at startup. Update it with a new
-bridge package so the pinch patch is retained.
+この配布にはDeveloper ID署名・公証がありません。macOSが初回起動を止めた場合は、「システム設定 → プライバシーとセキュリティ」でこのセットアップアプリの起動を許可してください。組織の管理ポリシーで許可できない場合もあります。OSの確認を完全に省略するにはDeveloper ID署名・公証が必要です。
 
-## Signing and trust
+ファイルのハッシュと署名を確認してから配置し、配置した3項目のquarantine属性だけを解除します。Gatekeeperの全体設定は変更しません。失敗時は成功表示を出さず、ログを開くボタンを表示します。
 
-The AU and relay have ad hoc signatures. This archive is **not Developer ID signed
-or notarized** because no Developer ID signing identity is available. The installer
-removes the `com.apple.quarantine` attribute only from the three verified files it
-installs, as required for these unsigned components to run on another Mac. It does
-not change the Mac's global Gatekeeper settings. Review the package and its
-`SHA256SUMS` before running the installer. If your Mac is managed by an organization,
-its policy may still prevent the AU from loading.
+## 収録内容とライセンス
 
-The AU and relay were tested on the build Mac with Logic Pro. The archive's installer
-was tested in an isolated home directory. A second Mac test is still required to
-confirm your specific macOS and Logic configuration.
+OpenUtau 0.1.572.1-alphaにピンチ拡大縮小とLogic向け案内を追加しています。起動時の更新通知は無効です。OpenUtauはMIT（OPENUTAU_LICENSE.txt）、ブリッジと配布コードはMPL-2.0（BRIDGE_LICENSE.txt）です。
 
-## Sources and licenses
+ソース：https://github.com/sotwat/openutau-logic-au
 
-- OpenUtau: <https://github.com/openutau/OpenUtau/releases/tag/0.1.572.1-alpha>
-  (MIT; `OPENUTAU_LICENSE.txt`). The piano-roll change is in the source repository's
-  `patches/` directory and the macOS touch helper is in `native/`. They can be rebuilt with `scripts/build_openutau_au_pinch.sh`.
-- OpenUtau Bridge and this distribution: source repository linked from the GitHub
-  release (MPL-2.0; `BRIDGE_LICENSE.txt`).
-
-The bundled OpenUtau executable is ad hoc re-signed after replacing `OpenUtau.dll`.
-The separate `/Applications/OpenUtau.app` installation remains official and unchanged.
+別のMacでの実機検証は未実施です。
