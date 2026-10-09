@@ -35,6 +35,14 @@ elif ! git -C "$source_dir" apply --reverse --check "$guide_patch" 2>/dev/null; 
     exit 1
 fi
 
+shortcut_patch="$repo/patches/openutau-keyboard-shortcuts-0.1.572.1-alpha.patch"
+if git -C "$source_dir" apply --check "$shortcut_patch" 2>/dev/null; then
+    git -C "$source_dir" apply "$shortcut_patch"
+elif ! git -C "$source_dir" apply --reverse --check "$shortcut_patch" 2>/dev/null; then
+    echo 'Source differs from the expected keyboard shortcuts patch state.' >&2
+    exit 1
+fi
+
 (
     cd "$source_dir"
     "$dotnet" build OpenUtau -c Release -r osx-arm64 \

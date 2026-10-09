@@ -1,0 +1,30 @@
+--- a/OpenUtau/Controls/PianoRoll.axaml.cs
++++ b/OpenUtau/Controls/PianoRoll.axaml.cs
+@@ -1784,7 +1784,7 @@
+                         notesVm.TransposeSelection(1);
+                         return true;
+                     }
+-                    if (isCtrl) {
++                    if (isCtrl || isShift) {
+                         notesVm.TransposeSelection(12);
+                         return true;
+                     }
+@@ -1794,7 +1794,7 @@
+                         notesVm.TransposeSelection(-1);
+                         return true;
+                     }
+-                    if (isCtrl) {
++                    if (isCtrl || isShift) {
+                         notesVm.TransposeSelection(-12);
+                         return true;
+                     }
+--- a/OpenUtau/Views/MainWindow.axaml.cs
++++ b/OpenUtau/Views/MainWindow.axaml.cs
+@@ -951,6 +951,7 @@
+             if (args.KeyModifiers == KeyModifiers.None) {
+                 args.Handled = true;
+                 switch (args.Key) {
++                    case Key.Back:
+                     case Key.Delete: viewModel.TracksViewModel.DeleteSelectedParts(); break;
+                     case Key.Space: PlayOrPause(); break;
+                     case Key.Home: viewModel.PlaybackViewModel.MovePlayPos(0); break;
