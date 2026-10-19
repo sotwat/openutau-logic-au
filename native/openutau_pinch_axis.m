@@ -71,6 +71,12 @@ static void attach(NSView *view) {
     if (!view) return;
     Class original = object_getClass(view);
     const char *name = class_getName(original);
+    // Never replace AppKit/KVO classes, especially the file panel's NSRemoteView.
+    if (original != NSClassFromString(@"AvnView") &&
+        strcmp(name, "OUTrackpad_AvnView") != 0) {
+        for (NSView *child in view.subviews) attach(child);
+        return;
+    }
     if (strncmp(name, "OUTrackpad_", 11) != 0) {
         NSString *subclassName = [@"OUTrackpad_" stringByAppendingString:NSStringFromClass(original)];
         Class subclass = NSClassFromString(subclassName);
@@ -88,17 +94,24 @@ static void attach(NSView *view) {
     view.allowedTouchTypes |= NSTouchTypeMaskIndirect;
 }
 
+static void attachWindow(NSWindow *window) {
+    Class avaloniaWindow = NSClassFromString(@"AvnWindow");
+    if (avaloniaWindow && [window isKindOfClass:avaloniaWindow]) {
+        attach(window.contentView);
+    }
+}
+
 int ou_pinch_start(void) {
-    for (NSWindow *window in NSApp.windows) attach(window.contentView);
+    for (NSWindow *window in NSApp.windows) attachWindow(window);
     if (monitor) return 1;
     windowObserver = [[NSNotificationCenter defaultCenter]
         addObserverForName:NSWindowDidBecomeKeyNotification object:nil queue:nil
         usingBlock:^(NSNotification *notification) {
-            attach(((NSWindow *)notification.object).contentView);
+            attachWindow(notification.object);
         }];
     monitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskMagnify
         handler:^NSEvent *(NSEvent *event) {
-            attach(event.window.contentView);
+            attachWindow(event.window);
 #ifdef OPENUTAU_PINCH_DEBUG
             FILE *log = fopen("/tmp/openutau-pinch-axis-debug.log", "a");
             if (log) { fprintf(log, "magnify axis=%d\n", axis); fclose(log); }

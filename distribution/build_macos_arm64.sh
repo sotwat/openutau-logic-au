@@ -3,10 +3,10 @@ set -eu
 
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 app=${OPENUTAU_APP:-/Applications/OpenUtau AU.app}
-version=0.1.572.1-alpha-one-click.2
-expected_app_sha=ef7d7e0d65b57cc5ec9a6ec2f06c0c363d6a185739069565056d51fba636d97c
+version=0.1.572.1-alpha-one-click.3
+expected_app_sha=2c29cea787dbc0d1906d72a3e9c39f7c0dc266a1b36c1b00a730d998526187c1
 expected_dll_sha=f92022ce6487be27f3caeddf3f14db0c32afc80e2122827f1e52ddda966ad9c7
-expected_axis_sha=a97502004a60d0fa377ae1eda9641b9724d002b62f1b56691e3e9e8da4016451
+expected_axis_sha=6a74557d75563a5e26e6b9a9eb5f81dcab1062dfe345906a133942659c78e4db
 name="OpenUtau-Logic-AU-${version}-macos-arm64"
 
 test -d "$app" || { echo "OpenUtau app not found: $app" >&2; exit 1; }

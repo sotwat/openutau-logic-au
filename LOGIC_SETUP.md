@@ -11,7 +11,7 @@
 
 ## 別のApple Silicon Macへの導入
 
-[GitHubの公開リリース](https://github.com/sotwat/openutau-logic-au/releases)から最新版の配布ZIP `OpenUtau-Logic-AU-0.1.572.1-alpha-one-click.1-macos-arm64.zip` を取得し、展開して「セットアップ.app」を開きます。ターミナル操作は不要です。AUの登録・検証、中継の起動まで自動で行い、成功を確認できた場合だけ完了を表示します。ピンチ対応OpenUtau AU、AU音源、中継がユーザー領域に入り、既存ファイルはバックアップされます。詳しい条件と署名に関する注意はZIP内の`README.md`を参照してください。Intel Mac向けではありません。
+[GitHubの公開リリース](https://github.com/sotwat/openutau-logic-au/releases)から最新版の配布ZIP `OpenUtau-Logic-AU-0.1.572.1-alpha-one-click.3-macos-arm64.zip` を取得し、展開して「セットアップ.app」を開きます。ターミナル操作は不要です。AUの登録・検証、中継の起動まで自動で行い、成功を確認できた場合だけ完了を表示します。ピンチ対応OpenUtau AU、AU音源、中継がユーザー領域に入り、既存ファイルはバックアップされます。詳しい条件と署名に関する注意はZIP内の`README.md`を参照してください。Intel Mac向けではありません。
 
 ソースから配布ZIPを作り直すときは、公式OpenUtau `0.1.572.1-alpha`のソースとarm64版アプリを用意し、`scripts/build_openutau_au_pinch.sh`でピンチ対応アプリを生成します。`OPENUTAU_SOURCE`には公式タグのチェックアウト、`OPENUTAU_PINCH_APP`には新規出力先、`DOTNET`には.NET 10 SDKを指定します。検証済みアプリを`/Applications/OpenUtau AU.app`に置き、`sh distribution/build_macos_arm64.sh`を実行します。後者は実行ファイルと`OpenUtau.dll`のSHA-256を照合してからAUと中継をビルドし、`dist/`にZIPを作ります。声ライブラリや譜面は含めません。
 
@@ -64,3 +64,17 @@ AUv2のビルドには`clap-wrapper`がAppleのAudioUnitSDKを取得します。
 ピアノロールで音符を選択し、Shift＋↑で12半音上げ、Shift＋↓で12半音下げます。Command＋Zで取り消せます。音域の上限・下限を超える選択は移動しません。検証用2音（60・64）が上移動で72・76、下移動で60・64、取り消しで72・76になることを実アプリの保存結果で確認しました。
 
 メイン画面で選択したパートはBackspaceでも削除できます。Command＋Zで取り消せます。検証譜面のパート削除後にvoice_partsが空になり、取り消し後に2音ごと復元されることを保存結果で確認しました。
+
+## 初回保存時のクラッシュ修正（2026-10-19）
+
+macOSのクラッシュ記録2件で、初回保存ダイアログの表示中にNSRemoteViewのKVO解除が失敗していました。ピンチ補助処理がすべてのウィンドウのcontentViewを動的サブクラスへ変更していたため、対象をAvaloniaのAvnWindow内の正確なAvnViewクラスだけに制限しました。AppKitのビューとKVOが付与したクラスは変更しません。
+
+回帰テストはコンテナ・他のウィンドウ・KVO監視中ビューのクラス保持、保存パネル100回、編集ビューのタッチ受信設定、ピンチ軸判別を検査します。旧コードではクラス保持の検査に失敗し、修正版では合格しました。
+
+```sh
+clang -fobjc-arc -fblocks -framework AppKit -arch arm64 tests/test_pinch_window_scope.m -o /tmp/openutau-window-scope-test
+/tmp/openutau-window-scope-test
+python3 tests/test_macos_distribution.py dist/OpenUtau-Logic-AU-0.1.572.1-alpha-one-click.3-macos-arm64.zip
+```
+
+このMacの実アプリで、新規プロジェクトのCommand＋Sによる初回保存6回（ピアノロール起動後の5回を含む）とキャンセル5回を確認し、強制終了は発生しませんでした。配布ZIPの署名、隔離ホームへの導入・再導入、データ保持、改ざん拒否も合格。今回、物理トラックパッドによるピンチ操作とLogicとの再生接続は再検証していません。
