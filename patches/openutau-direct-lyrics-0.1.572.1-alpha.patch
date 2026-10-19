@@ -1,0 +1,143 @@
+diff --git a/OpenUtau/Controls/LyricBox.axaml.cs b/OpenUtau/Controls/LyricBox.axaml.cs
+index 938acb0..ac5c8e6 100644
+--- a/OpenUtau/Controls/LyricBox.axaml.cs
++++ b/OpenUtau/Controls/LyricBox.axaml.cs
+@@ -158,6 +158,12 @@ private void OnTab(KeyModifiers keyModifiers) {
+                 }
+             }
+             EndEdit(true);
++            // Committing a phrase can change the next note's lyric.
++            text = tabTo switch {
++                LyricBoxNote nextNote => nextNote.Unwrap().lyric,
++                LyricBoxPhoneme nextPhoneme => nextPhoneme.Unwrap().phoneme,
++                _ => null,
++            };
+             if (tabTo != null && focusNote != null && text != null && part != null) {
+                 DocManager.Inst.ExecuteCmd(new FocusNoteNotification(part, focusNote));
+                 Show(part, tabTo, text);
+diff --git a/OpenUtau/ViewModels/LyricBoxViewModel.cs b/OpenUtau/ViewModels/LyricBoxViewModel.cs
+index 6235462..28b26ce 100644
+--- a/OpenUtau/ViewModels/LyricBoxViewModel.cs
++++ b/OpenUtau/ViewModels/LyricBoxViewModel.cs
+@@ -1,5 +1,7 @@
+ ﻿using System.Collections.Generic;
+ using System.Linq;
++using System.Text;
++using System.Text.RegularExpressions;
+ using System.Threading.Tasks;
+ using DynamicData.Binding;
+ using OpenUtau.Core;
+@@ -111,7 +113,17 @@ public void Commit() {
+                 DocManager.Inst.ExecuteCmd(new ChangePhonemeAliasCommand(Part, note.Extends ?? note, index, Text));
+             } else {
+                 DocManager.Inst.StartUndoGroup("command.note.lyric");
+-                DocManager.Inst.ExecuteCmd(new ChangeNoteLyricCommand(Part, (NoteOrPhoneme as LyricBoxNote)!.Unwrap(), Text));
++                var note = (NoteOrPhoneme as LyricBoxNote)!.Unwrap();
++                var normalized = Text.Normalize(NormalizationForm.FormC);
++                var lyrics = Regex.IsMatch(normalized, @"\A[ぁ-ゖー]+\z")
++                    ? Core.Util.SplitLyrics.Split(normalized)
++                    : new List<string> { Text };
++                var notes = Part.notes.SkipWhile(n => n != note).Take(lyrics.Count).ToArray();
++                if (lyrics.Count > 1 && notes.Length > 0) {
++                    DocManager.Inst.ExecuteCmd(new ChangeNoteLyricCommand(Part, notes, lyrics.Take(notes.Length).ToArray()));
++                } else {
++                    DocManager.Inst.ExecuteCmd(new ChangeNoteLyricCommand(Part, note, Text));
++                }
+             }
+             DocManager.Inst.EndUndoGroup();
+         }
+diff --git a/OpenUtau.Test/Core/Util/DirectLyricInputTest.cs b/OpenUtau.Test/Core/Util/DirectLyricInputTest.cs
+new file mode 100644
+index 0000000..be7825e
+--- /dev/null
++++ b/OpenUtau.Test/Core/Util/DirectLyricInputTest.cs
+@@ -0,0 +1,89 @@
++using System;
++using System.Collections.Generic;
++using System.Linq;
++using OpenUtau.App.ViewModels;
++using OpenUtau.Core.Render;
++using OpenUtau.Core.Ustx;
++using ReactiveUI.Builder;
++using Xunit;
++
++namespace OpenUtau.Core.Util {
++    [Collection(RenderSingletonCollection.Name)]
++    public class DirectLyricInputTest : IDisposable {
++        static DirectLyricInputTest() {
++            RxAppBuilder.CreateReactiveUIBuilder().WithCoreServices().BuildApp();
++        }
++        readonly UProject previous;
++        readonly List<UCommand> commands = new();
++        readonly UVoicePart part = new() { trackNo = 0 };
++
++        public DirectLyricInputTest() {
++            var project = new UProject();
++            project.tracks.Add(new UTrack());
++            project.parts.Add(part);
++            previous = DocManager.Inst.TakeProjectForTest(project);
++            DocManager.Inst.CommandSink = cmd => {
++                cmd.Execute();
++                if (cmd is not UNotification) commands.Add(cmd);
++            };
++            for (int i = 0; i < 7; i++) {
++                var note = project.CreateNote(60 + i, i * 240, 240);
++                note.lyric = "old" + i;
++                part.notes.Add(note);
++            }
++        }
++
++        public void Dispose() {
++            DocManager.Inst.CommandSink = null!;
++            DocManager.Inst.TakeProjectForTest(previous);
++        }
++
++        void Commit(string text, int start = 1, bool phoneme = false) {
++            var type = typeof(OpenUtau.App.App).Assembly.GetType("OpenUtau.App.ViewModels.LyricBoxViewModel")!;
++            var vm = Activator.CreateInstance(type)!;
++            var note = part.notes.ElementAt(start);
++            type.GetProperty("Part")!.SetValue(vm, part);
++            type.GetProperty("NoteOrPhoneme")!.SetValue(vm, phoneme
++                ? new LyricBoxPhoneme(new UPhoneme { Parent = note })
++                : new LyricBoxNote(note));
++            type.GetProperty("Text")!.SetValue(vm, text);
++            type.GetMethod("Commit")!.Invoke(vm, null);
++        }
++
++        [Fact]
++        public void DistributesFromEditedNoteAndRestoresWithOneCommand() {
++            Commit("ありがとう");
++            Assert.Equal(new[] { "old0", "あ", "り", "が", "と", "う", "old6" }, part.notes.Select(n => n.lyric));
++            var command = Assert.IsType<ChangeNoteLyricCommand>(Assert.Single(commands));
++            command.Unexecute();
++            Assert.Equal(Enumerable.Range(0, 7).Select(i => "old" + i), part.notes.Select(n => n.lyric));
++        }
++
++        [Theory]
++        [InlineData("きゃきゅきょ", "きゃ", "きゅ", "きょ")]
++        [InlineData("がっこう", "が", "っ", "こ", "う")]
++        [InlineData("か\u3099く", "が", "く")]
++        public void GroupsSmallKanaAndNormalizesDakuten(string text, params string[] expected) {
++            Commit(text);
++            Assert.Equal(expected, part.notes.Skip(1).Take(expected.Length).Select(n => n.lyric));
++        }
++
++        [Theory]
++        [InlineData("a あ", 1)]
++        [InlineData("[k a]", 1)]
++        [InlineData("hello", 1)]
++        [InlineData("", 1)]
++        public void KeepsWholeInputWhenInputIsNotHiragana(string text, int start) {
++            Commit(text, start);
++            Assert.Equal(text, part.notes.ElementAt(start).lyric);
++            Assert.Single(Assert.IsType<ChangeNoteLyricCommand>(Assert.Single(commands)).Notes);
++        }
++
++        [Fact]
++        public void DiscardsOverflowWhenOnlyTwoNotesRemain() {
++            Commit("ありがとう", 5);
++            Assert.Equal(new[] { "あ", "り" }, part.notes.Skip(5).Select(n => n.lyric));
++            Assert.Equal(7, part.notes.Count);
++        }
++    }
++}

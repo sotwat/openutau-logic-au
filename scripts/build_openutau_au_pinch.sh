@@ -43,6 +43,14 @@ elif ! git -C "$source_dir" apply --reverse --check "$shortcut_patch" 2>/dev/nul
     exit 1
 fi
 
+lyrics_patch="$repo/patches/openutau-direct-lyrics-0.1.572.1-alpha.patch"
+if git -C "$source_dir" apply --check "$lyrics_patch" 2>/dev/null; then
+    git -C "$source_dir" apply "$lyrics_patch"
+elif ! git -C "$source_dir" apply --reverse --check "$lyrics_patch" 2>/dev/null; then
+    echo 'Source differs from the expected direct lyrics patch state.' >&2
+    exit 1
+fi
+
 (
     cd "$source_dir"
     "$dotnet" build OpenUtau -c Release -r osx-arm64 \
