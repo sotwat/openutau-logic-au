@@ -1,6 +1,17 @@
 --- a/OpenUtau/Controls/PianoRoll.axaml.cs
 +++ b/OpenUtau/Controls/PianoRoll.axaml.cs
-@@ -1784,7 +1784,7 @@
+@@ -1709,6 +1709,10 @@
+                     return true;
+                 case Key.Enter:
+                     if (isNone) {
++                        playVm.MovePlayPos(0);
++                        return true;
++                    }
++                    if (isShift) {
+                         if (notesVm.Selection.Count == 1) {
+                             var note = notesVm.Selection.First();
+                             LyricBox?.Show(ViewModel.NotesViewModel.Part!, new LyricBoxNote(note), note.lyric);
+@@ -1784,7 +1788,7 @@
                          notesVm.TransposeSelection(1);
                          return true;
                      }
@@ -9,7 +20,7 @@
                          notesVm.TransposeSelection(12);
                          return true;
                      }
-@@ -1794,7 +1794,7 @@
+@@ -1794,7 +1798,7 @@
                          notesVm.TransposeSelection(-1);
                          return true;
                      }
@@ -20,11 +31,20 @@
                      }
 --- a/OpenUtau/Views/MainWindow.axaml.cs
 +++ b/OpenUtau/Views/MainWindow.axaml.cs
-@@ -951,6 +951,7 @@
+@@ -951,8 +951,16 @@
              if (args.KeyModifiers == KeyModifiers.None) {
                  args.Handled = true;
                  switch (args.Key) {
 +                    case Key.Back:
                      case Key.Delete: viewModel.TracksViewModel.DeleteSelectedParts(); break;
                      case Key.Space: PlayOrPause(); break;
++                    case Key.Enter:
++                        if (FocusManager?.GetFocusedElement() is TextBox or ComboBox or ComboBoxItem) {
++                            args.Handled = false;
++                            break;
++                        }
++                        viewModel.PlaybackViewModel.MovePlayPos(0);
++                        break;
                      case Key.Home: viewModel.PlaybackViewModel.MovePlayPos(0); break;
+                     case Key.End:
+                         if (viewModel.TracksViewModel.Parts.Count > 0) {
