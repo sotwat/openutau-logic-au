@@ -18,7 +18,7 @@
          }
 --- a/OpenUtau/ViewModels/NotePropertiesViewModel.cs
 +++ b/OpenUtau/ViewModels/NotePropertiesViewModel.cs
-@@ -158,8 +158,34 @@
+@@ -158,8 +158,71 @@
              DocManager.Inst.AddSubscriber(this);
          }
 
@@ -26,10 +26,47 @@
 +        public bool FallEnabled => AllTechniqueEnabled("fall");
 +        public bool HammerEnabled => AllTechniqueEnabled("hammer");
 +
++        public float ScoopDepth => selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "ScoopDepth") : VocalTechniques.Parameter(selectedNotes.First().pitch, "ScoopDepth");
++        public float ScoopLength => selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "ScoopLength") : VocalTechniques.Parameter(selectedNotes.First().pitch, "ScoopLength");
++        public int ScoopCurve {
++            get => (int)( selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "ScoopCurve") : VocalTechniques.Parameter(selectedNotes.First().pitch, "ScoopCurve"));
++            set => ChangeTechniqueShape("ScoopCurve", value);
++        }
++        public float FallDepth => selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "FallDepth") : VocalTechniques.Parameter(selectedNotes.First().pitch, "FallDepth");
++        public float FallLength => selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "FallLength") : VocalTechniques.Parameter(selectedNotes.First().pitch, "FallLength");
++        public int FallCurve {
++            get => (int)( selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "FallCurve") : VocalTechniques.Parameter(selectedNotes.First().pitch, "FallCurve"));
++            set => ChangeTechniqueShape("FallCurve", value);
++        }
++        public float HammerDepth => selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "HammerDepth") : VocalTechniques.Parameter(selectedNotes.First().pitch, "HammerDepth");
++        public float HammerLength => selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "HammerLength") : VocalTechniques.Parameter(selectedNotes.First().pitch, "HammerLength");
++        public float HammerRise => selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "HammerRise") : VocalTechniques.Parameter(selectedNotes.First().pitch, "HammerRise");
++
++        private void ChangeTechniqueShape(string key, int value) {
++            if (NoteLoading || Part == null || selectedNotes.Count == 0 || value < 0 ||
++                value == VocalTechniques.Parameter(selectedNotes.First().pitch, key)) { return; }
++            DocManager.Inst.StartUndoGroup("command.property.edit");
++            bool wasPressed = PanelControlPressed;
++            PanelControlPressed = true;
++            SetNoteParams("Technique:" + key, (float)value);
++            PanelControlPressed = wasPressed;
++            DocManager.Inst.EndUndoGroup();
++        }
++
 +        private bool AllTechniqueEnabled(string name) => selectedNotes.Count > 0 &&
 +            selectedNotes.All(n => VocalTechniques.IsEnabled(n.pitch, name));
 +
 +        private void RefreshTechniques() {
++            this.RaisePropertyChanged(nameof(ScoopDepth));
++            this.RaisePropertyChanged(nameof(ScoopLength));
++            this.RaisePropertyChanged(nameof(ScoopCurve));
++            this.RaisePropertyChanged(nameof(FallDepth));
++            this.RaisePropertyChanged(nameof(FallLength));
++            this.RaisePropertyChanged(nameof(FallCurve));
++            this.RaisePropertyChanged(nameof(HammerDepth));
++            this.RaisePropertyChanged(nameof(HammerLength));
++            this.RaisePropertyChanged(nameof(HammerRise));
++
 +            this.RaisePropertyChanged(nameof(ScoopEnabled));
 +            this.RaisePropertyChanged(nameof(FallEnabled));
 +            this.RaisePropertyChanged(nameof(HammerEnabled));
@@ -53,7 +90,7 @@
              this.RaisePropertyChanged(nameof(Title));
              ApplyPortamentoPreset = null;
              ApplyVibratoPreset = null;
-@@ -417,6 +443,7 @@
+@@ -417,6 +480,7 @@
                  }
              } else if (cmd is ExpCommand) {
                  if (cmd is PitchExpCommand) {
@@ -61,6 +98,24 @@
                      if (note.pitch.data.Count >= 2) {
                          PortamentoLength = note.pitch.data.Last().X - note.pitch.data.First().X;
                          PortamentoStart = note.pitch.data.First().X;
+@@ -457,7 +521,16 @@
+         // panel -> note
+         public void SetNoteParams(string tag, object? obj) {
+             if (AllowNoteEdit && Part != null && selectedNotes.Count > 0) {
+-                if (tag == "Lyric") {
++                if (tag.StartsWith("Technique:")) {
++                    string key = tag.Substring(10);
++                    float value = obj == null ? VocalTechniques.Parameter(new UPitch(), key) :
++                        float.TryParse(obj.ToString(), out var parsed) ? parsed : float.NaN;
++                    foreach (var note in selectedNotes) {
++                        var pitch = VocalTechniques.Adjust(note.pitch, note.DurationMs, key, value);
++                        DocManager.Inst.ExecuteCmd(new SetPitchPointsCommand(Part, note, pitch));
++                    }
++                    RefreshTechniques();
++                } else if (tag == "Lyric") {
+                     if (obj is string s && !string.IsNullOrEmpty(s)) {
+                         foreach (UNote note in selectedNotes) {
+                             DocManager.Inst.ExecuteCmd(new ChangeNoteLyricCommand(Part, note, s));
 --- a/OpenUtau/Controls/NotePropertiesControl.axaml.cs
 +++ b/OpenUtau/Controls/NotePropertiesControl.axaml.cs
 @@ -110,6 +110,12 @@
@@ -76,9 +131,28 @@
          void VibratoEnableClicked(object sender, RoutedEventArgs e) {
              ViewModel.SetVibratoEnable();
          }
+@@ -140,6 +146,18 @@
+
+         void OnRemoveVibratoPreset(object sender, RoutedEventArgs e) {
+             ViewModel.RemoveAppliedVibratoPreset();
++        }
++
++        private void TechniqueSliderKeyUp(object? sender, KeyEventArgs e) {
++            if (sender is Slider slider && slider.Tag is string tag &&
++                e.Key is Key.Left or Key.Right or Key.Up or Key.Down or Key.Home or Key.End or Key.PageUp or Key.PageDown) {
++                DocManager.Inst.StartUndoGroup("command.property.edit");
++                NotePropertiesViewModel.PanelControlPressed = true;
++                ViewModel.SetNoteParams(tag, (float)slider.Value);
++                NotePropertiesViewModel.PanelControlPressed = false;
++                DocManager.Inst.EndUndoGroup();
++                e.Handled = true;
++            }
+         }
+
+         private void OnKeyDown(object? sender, KeyEventArgs e) {
 --- a/OpenUtau/Controls/NotePropertiesControl.axaml
 +++ b/OpenUtau/Controls/NotePropertiesControl.axaml
-@@ -107,6 +107,29 @@
+@@ -107,6 +107,97 @@
            </StackPanel>
          </Expander>
 
@@ -90,18 +164,86 @@
 +                OnContent="{DynamicResource button.on}" OffContent="{DynamicResource button.off}"
 +                Tag="scoop" Click="TechniqueClicked"/>
 +            </Grid>
++            <StackPanel IsEnabled="{Binding ScoopEnabled}">
++              <Grid ColumnDefinitions="130,20,50,20,*">
++                <Label Content="音程差 (cent)"/>
++                <TextBox Grid.Column="2" Text="{Binding ScoopDepth, Mode=OneWay}" Tag="Technique:ScoopDepth"/>
++                <Slider Grid.Column="4" Classes="fader" Value="{Binding ScoopDepth, Mode=OneWay}"
++                  Minimum="0" Maximum="1200" TickFrequency="1" IsSnapToTickEnabled="True" KeyUp="TechniqueSliderKeyUp" Tag="Technique:ScoopDepth"/>
++              </Grid>
++              <Grid ColumnDefinitions="130,20,50,20,*">
++                <Label Content="長さ (ms)"/>
++                <TextBox Grid.Column="2" Text="{Binding ScoopLength, Mode=OneWay}" Tag="Technique:ScoopLength"/>
++                <Slider Grid.Column="4" Classes="fader" Value="{Binding ScoopLength, Mode=OneWay}"
++                  Minimum="1" Maximum="2000" TickFrequency="1" IsSnapToTickEnabled="True" KeyUp="TechniqueSliderKeyUp" Tag="Technique:ScoopLength"/>
++              </Grid>
++              <Grid ColumnDefinitions="130,20,50,20,*">
++                <Label Content="カーブ"/>
++                <ComboBox Grid.Column="2" Grid.ColumnSpan="3" SelectedIndex="{Binding ScoopCurve, Mode=TwoWay}"
++                  Tag="Technique:ScoopCurve" Focusable="True" HorizontalAlignment="Stretch">
++                  <ComboBoxItem Content="{DynamicResource context.pitch.easeinout}"/>
++                  <ComboBoxItem Content="{DynamicResource context.pitch.linear}"/>
++                  <ComboBoxItem Content="{DynamicResource context.pitch.easein}"/>
++                  <ComboBoxItem Content="{DynamicResource context.pitch.easeout}"/>
++                </ComboBox>
++              </Grid>
++            </StackPanel>
 +            <Grid ColumnDefinitions="143,*">
 +              <Label Content="フォール"/>
 +              <ToggleSwitch Grid.Column="1" IsChecked="{Binding FallEnabled, Mode=OneWay}"
 +                OnContent="{DynamicResource button.on}" OffContent="{DynamicResource button.off}"
 +                Tag="fall" Click="TechniqueClicked"/>
 +            </Grid>
++            <StackPanel IsEnabled="{Binding FallEnabled}">
++              <Grid ColumnDefinitions="130,20,50,20,*">
++                <Label Content="音程差 (cent)"/>
++                <TextBox Grid.Column="2" Text="{Binding FallDepth, Mode=OneWay}" Tag="Technique:FallDepth"/>
++                <Slider Grid.Column="4" Classes="fader" Value="{Binding FallDepth, Mode=OneWay}"
++                  Minimum="0" Maximum="1200" TickFrequency="1" IsSnapToTickEnabled="True" KeyUp="TechniqueSliderKeyUp" Tag="Technique:FallDepth"/>
++              </Grid>
++              <Grid ColumnDefinitions="130,20,50,20,*">
++                <Label Content="長さ (ms)"/>
++                <TextBox Grid.Column="2" Text="{Binding FallLength, Mode=OneWay}" Tag="Technique:FallLength"/>
++                <Slider Grid.Column="4" Classes="fader" Value="{Binding FallLength, Mode=OneWay}"
++                  Minimum="1" Maximum="2000" TickFrequency="1" IsSnapToTickEnabled="True" KeyUp="TechniqueSliderKeyUp" Tag="Technique:FallLength"/>
++              </Grid>
++              <Grid ColumnDefinitions="130,20,50,20,*">
++                <Label Content="カーブ"/>
++                <ComboBox Grid.Column="2" Grid.ColumnSpan="3" SelectedIndex="{Binding FallCurve, Mode=TwoWay}"
++                  Tag="Technique:FallCurve" Focusable="True" HorizontalAlignment="Stretch">
++                  <ComboBoxItem Content="{DynamicResource context.pitch.easeinout}"/>
++                  <ComboBoxItem Content="{DynamicResource context.pitch.linear}"/>
++                  <ComboBoxItem Content="{DynamicResource context.pitch.easein}"/>
++                  <ComboBoxItem Content="{DynamicResource context.pitch.easeout}"/>
++                </ComboBox>
++              </Grid>
++            </StackPanel>
 +            <Grid ColumnDefinitions="143,*">
 +              <Label Content="ハンマリング"/>
 +              <ToggleSwitch Grid.Column="1" IsChecked="{Binding HammerEnabled, Mode=OneWay}"
 +                OnContent="{DynamicResource button.on}" OffContent="{DynamicResource button.off}"
 +                Tag="hammer" Click="TechniqueClicked"/>
 +            </Grid>
++            <StackPanel IsEnabled="{Binding HammerEnabled}">
++              <Grid ColumnDefinitions="130,20,50,20,*">
++                <Label Content="音程差 (cent)"/>
++                <TextBox Grid.Column="2" Text="{Binding HammerDepth, Mode=OneWay}" Tag="Technique:HammerDepth"/>
++                <Slider Grid.Column="4" Classes="fader" Value="{Binding HammerDepth, Mode=OneWay}"
++                  Minimum="0" Maximum="1200" TickFrequency="1" IsSnapToTickEnabled="True" KeyUp="TechniqueSliderKeyUp" Tag="Technique:HammerDepth"/>
++              </Grid>
++              <Grid ColumnDefinitions="130,20,50,20,*">
++                <Label Content="保持 (ms)"/>
++                <TextBox Grid.Column="2" Text="{Binding HammerLength, Mode=OneWay}" Tag="Technique:HammerLength"/>
++                <Slider Grid.Column="4" Classes="fader" Value="{Binding HammerLength, Mode=OneWay}"
++                  Minimum="1" Maximum="2000" TickFrequency="1" IsSnapToTickEnabled="True" KeyUp="TechniqueSliderKeyUp" Tag="Technique:HammerLength"/>
++              </Grid>
++              <Grid ColumnDefinitions="130,20,50,20,*">
++                <Label Content="立上り (ms)"/>
++                <TextBox Grid.Column="2" Text="{Binding HammerRise, Mode=OneWay}" Tag="Technique:HammerRise"/>
++                <Slider Grid.Column="4" Classes="fader" Value="{Binding HammerRise, Mode=OneWay}"
++                  Minimum="1" Maximum="500" TickFrequency="1" IsSnapToTickEnabled="True" KeyUp="TechniqueSliderKeyUp" Tag="Technique:HammerRise"/>
++              </Grid>
++            </StackPanel>
 +          </StackPanel>
 +        </Expander>
 +
@@ -110,7 +252,7 @@
              <ToggleSwitch IsChecked="{Binding VibratoEnable, Mode=OneWay}" OnContent="{DynamicResource button.on}" OffContent="{DynamicResource button.off}"
 --- /dev/null
 +++ b/OpenUtau.Core/Ustx/VocalTechniques.cs
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,145 @@
 +using System;
 +using System.Collections.Generic;
 +using System.Linq;
@@ -124,22 +266,31 @@
 +        public bool scoop;
 +        public bool fall;
 +        public bool hammer;
++        public float scoopDepth = 150, scoopLength = 140, scoopCurve = 0;
++        public float fallDepth = 200, fallLength = 180, fallCurve = 0;
++        public float hammerDepth = 100, hammerLength = 180, hammerRise = 20;
 +
 +        public VocalTechniqueState Clone() => new() {
 +            original = original.Select(p => p.Clone()).ToList(),
 +            applied = applied.Select(p => p.Clone()).ToList(),
 +            originalSnapFirst = originalSnapFirst,
 +            scoop = scoop, fall = fall, hammer = hammer,
++            scoopDepth = scoopDepth, scoopLength = scoopLength, scoopCurve = scoopCurve,
++            fallDepth = fallDepth, fallLength = fallLength, fallCurve = fallCurve,
++            hammerDepth = hammerDepth, hammerLength = hammerLength, hammerRise = hammerRise,
 +        };
 +    }
 +
 +    public static class VocalTechniques {
 +        // Pitch points use tenths of a semitone; times below are milliseconds.
 +        private static bool Matches(UPitch pitch) => pitch.techniques is { } state &&
-+            !pitch.snapFirst && pitch.data.Count == state.applied.Count &&
++            pitch.snapFirst == state.originalSnapFirst && pitch.data.Count == state.applied.Count &&
 +            pitch.data.Zip(state.applied).All(pair =>
 +                pair.First.X == pair.Second.X && pair.First.Y == pair.Second.Y &&
 +                pair.First.shape == pair.Second.shape);
++
++        public static bool IsActive(UPitch pitch) => Matches(pitch) &&
++            (pitch.techniques!.scoop || pitch.techniques.fall || pitch.techniques.hammer);
 +
 +        public static bool IsEnabled(UPitch pitch, string name) {
 +            if (!Matches(pitch)) { return false; }
@@ -149,6 +300,39 @@
 +                "hammer" => pitch.techniques!.hammer,
 +                _ => false,
 +            };
++        }
++
++        public static float Parameter(UPitch pitch, string key) {
++            var s = pitch.techniques ?? new VocalTechniqueState();
++            return key switch {
++                "ScoopDepth" => s.scoopDepth, "ScoopLength" => s.scoopLength, "ScoopCurve" => s.scoopCurve,
++                "FallDepth" => s.fallDepth, "FallLength" => s.fallLength, "FallCurve" => s.fallCurve,
++                "HammerDepth" => s.hammerDepth, "HammerLength" => s.hammerLength, "HammerRise" => s.hammerRise,
++                _ => throw new ArgumentException("Unknown parameter", nameof(key)),
++            };
++        }
++
++        public static UPitch Adjust(UPitch pitch, double durationMs, string key, float value) {
++            string name = key.StartsWith("Scoop") ? "scoop" : key.StartsWith("Fall") ? "fall" : "hammer";
++            if (!IsEnabled(pitch, name) || !float.IsFinite(value)) { return pitch.Clone(); }
++            var copy = pitch.Clone();
++            var s = copy.techniques!;
++            float depth = Math.Clamp(value, 0, 1200);
++            float length = Math.Clamp(value, 1, 2000);
++            float curve = Math.Clamp((float)Math.Round(value), 0, 3);
++            switch (key) {
++                case "ScoopDepth": s.scoopDepth = depth; break;
++                case "ScoopLength": s.scoopLength = length; break;
++                case "ScoopCurve": s.scoopCurve = curve; break;
++                case "FallDepth": s.fallDepth = depth; break;
++                case "FallLength": s.fallLength = length; break;
++                case "FallCurve": s.fallCurve = curve; break;
++                case "HammerDepth": s.hammerDepth = depth; break;
++                case "HammerLength": s.hammerLength = length; break;
++                case "HammerRise": s.hammerRise = Math.Clamp(value, 1, 500); break;
++                default: throw new ArgumentException("Unknown parameter", nameof(key));
++            }
++            return Set(copy, durationMs, name, true);
 +        }
 +
 +        public static UPitch Set(UPitch pitch, double durationMs, string name, bool enabled) {
@@ -165,58 +349,50 @@
 +                case "hammer": state.hammer = enabled; break;
 +            }
 +            if (!state.scoop && !state.fall && !state.hammer) {
-+                return new UPitch { data = state.original, snapFirst = state.originalSnapFirst };
++                state.applied = state.original.Select(p => p.Clone()).ToList();
++                return new UPitch { data = state.original.Select(p => p.Clone()).ToList(),
++                    snapFirst = state.originalSnapFirst, techniques = state };
 +            }
 +            float duration = (float)Math.Max(1, double.IsFinite(durationMs) ? durationMs : 1);
-+            float scoopEnd = Math.Min(140, duration * .25f);
-+            float hammerStep = Math.Min(180, duration * .35f);
-+            float hammerEnd = hammerStep + Math.Min(20, duration * .04f);
-+            float fallStart = duration - Math.Min(180, duration * .25f);
-+            var xs = new SortedSet<float>(state.original.Select(p => p.X)) { 0, duration };
-+            // Sample the original curves and each short envelope, keeping long notes bounded.
-+            for (int i = 0; i + 1 < state.original.Count; ++i) {
-+                var a = state.original[i]; var b = state.original[i + 1];
-+                int steps = Math.Clamp((int)Math.Ceiling((b.X - a.X) / 10), 1, 200);
-+                for (int j = 1; j < steps; ++j) { xs.Add(a.X + (b.X - a.X) * j / steps); }
++            var points = state.original.Select(p => p.Clone()).ToList();
++            if (points.Count < 2) {
++                points = new() { new(-40, 0), new(40, 0) };
 +            }
-+            void Segment(float a, float b) {
-+                xs.Add(a); xs.Add(b);
-+                for (float x = a + 10; x < b; x += 10) { xs.Add(x); }
-+            }
-+            if (state.scoop) { Segment(0, scoopEnd); }
-+            if (state.hammer) { Segment(0, hammerStep); Segment(hammerStep, hammerEnd); }
-+            if (state.fall) { Segment(fallStart, duration); }
-+            float Base(float x) {
-+                if (state.original.Count == 0) { return 0; }
-+                for (int i = 0; i + 1 < state.original.Count; ++i) {
-+                    var a = state.original[i]; var b = state.original[i + 1];
-+                    if (a.X <= x && x <= b.X && a.X < b.X) {
-+                        return (float)MusicMath.InterpolateShape(a.X, b.X, a.Y, b.Y, x, a.shape);
-+                    }
-+                }
-+                return x < state.original[0].X ? state.original[0].Y : state.original[^1].Y;
-+            }
-+            float Offset(float x) {
-+                if (x < 0) { return 0; }
-+                float y = 0;
-+                if (state.scoop && x < scoopEnd) {
-+                    float t = x / scoopEnd;
-+                    y -= 15 * (1 - t) * (1 - t);
-+                }
-+                if (state.hammer && x < hammerEnd) {
-+                    y -= x <= hammerStep ? 10 : 10 * (hammerEnd - x) / (hammerEnd - hammerStep);
-+                }
-+                if (state.fall && x > fallStart) {
-+                    float t = Math.Min(1, (x - fallStart) / (duration - fallStart));
-+                    y -= 20 * t * t;
-+                }
-+                return y;
-+            }
-+            var result = new UPitch {
-+                snapFirst = false,
-+                data = xs.Select(x => new PitchPoint(x, Base(x) + Offset(x), PitchPointShape.l)).ToList(),
-+                techniques = state,
++            PitchPointShape Shape(float value) => (int)value switch {
++                1 => PitchPointShape.l, 2 => PitchPointShape.i, 3 => PitchPointShape.o,
++                _ => PitchPointShape.io,
 +            };
++            // Edit the native entry transition, preserving later hand-authored points.
++            if (state.scoop || state.hammer) {
++                float start = Math.Min(0, points[0].X);
++                float end = Math.Min(duration * .8f, start + Math.Max(1,
++                    state.hammer ? state.hammerLength + state.hammerRise : state.scoopLength));
++                end = Math.Max(start + .1f, end);
++                float target = points[1].Y;
++                float depth = (state.scoop ? state.scoopDepth : 0) + (state.hammer ? state.hammerDepth : 0);
++                var entry = new List<PitchPoint>();
++                entry.Add(new(start, points[0].Y, Shape(state.scoopCurve)));
++                float dip = start + (end - start) * .4f;
++                if (state.hammer) { dip = Math.Min(start + (end - start) * .2f, 0); }
++                dip = Math.Max(start + .001f, dip);
++                entry.Add(new(dip, target - depth / 10, state.hammer ? PitchPointShape.l : Shape(state.scoopCurve)));
++                if (state.hammer) {
++                    float step = Math.Max(start + .01f, end - Math.Min(state.hammerRise, (end - start) * .5f));
++                    entry.Add(new(step, target - state.hammerDepth / 10, PitchPointShape.l));
++                }
++                entry.Add(new(end, target, points[1].shape));
++                points = entry.Concat(points.Skip(2).Where(p => p.X > end)).ToList();
++            }
++            if (state.fall) {
++                float entryEnd = state.scoop || state.hammer ? points[state.hammer ? 3 : 2].X : 0;
++                float start = Math.Max(entryEnd, duration - Math.Min(state.fallLength, duration * .95f));
++                start = Math.Min(start, duration - .01f);
++                float baseline = points.LastOrDefault(p => p.X <= start)?.Y ?? 0;
++                points = points.Where(p => p.X < start).ToList();
++                points.Add(new(start, baseline, Shape(state.fallCurve)));
++                points.Add(new(duration, baseline - state.fallDepth / 10, PitchPointShape.l));
++            }
++            var result = new UPitch { snapFirst = state.originalSnapFirst, data = points, techniques = state };
 +            state.applied = result.data.Select(p => p.Clone()).ToList();
 +            return result;
 +        }
@@ -224,7 +400,7 @@
 +}
 --- /dev/null
 +++ b/OpenUtau.Test/Core/Util/VocalTechniquesTest.cs
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,131 @@
 +using System;
 +using System.Linq;
 +using OpenUtau.Core.Ustx;
@@ -248,6 +424,8 @@
 +            var original = Original();
 +            var on = VocalTechniques.Set(original, 600, name, true);
 +            Assert.True(VocalTechniques.IsEnabled(on, name));
++            Assert.Equal(original.data[0].Y, on.data[0].Y);
++            Assert.Equal(original.snapFirst, on.snapFirst);
 +            var restored = Yaml.DefaultDeserializer.Deserialize<UPitch>(Yaml.DefaultSerializer.Serialize(on));
 +            Assert.True(VocalTechniques.IsEnabled(restored, name));
 +            Equal(original, VocalTechniques.Set(restored, 600, name, false));
@@ -296,18 +474,75 @@
 +            }
 +            Assert.All(pitch.data, p => Assert.True(float.IsFinite(p.X) && float.IsFinite(p.Y)));
 +            Assert.True(pitch.data.Zip(pitch.data.Skip(1)).All(p => p.First.X < p.Second.X));
-+            Assert.True(pitch.data.Count < 400);
++            Assert.True(pitch.data.Count <= 6);
 +        }
++        [Theory]
++        [InlineData("scoop", "ScoopDepth", 350)]
++        [InlineData("scoop", "ScoopLength", 250)]
++        [InlineData("scoop", "ScoopCurve", 3)]
++        [InlineData("fall", "FallDepth", 400)]
++        [InlineData("fall", "FallLength", 300)]
++        [InlineData("fall", "FallCurve", 2)]
++        [InlineData("hammer", "HammerDepth", 250)]
++        [InlineData("hammer", "HammerLength", 300)]
++        [InlineData("hammer", "HammerRise", 100)]
++        public void AdjustPersistsAndDoesNotAccumulate(string name, string key, float value) {
++            var original = Original();
++            var on = VocalTechniques.Set(original, 600, name, true);
++            var adjusted = VocalTechniques.Adjust(on, 600, key, value);
++            Assert.Equal(value, VocalTechniques.Parameter(adjusted, key));
++            Assert.NotEqual(on.data.Select(p => (p.X, p.Y, p.shape)), adjusted.data.Select(p => (p.X, p.Y, p.shape)));
++            Equal(adjusted, VocalTechniques.Adjust(adjusted, 600, key, value));
++            var loaded = Yaml.DefaultDeserializer.Deserialize<UPitch>(Yaml.DefaultSerializer.Serialize(adjusted));
++            Equal(adjusted, loaded);
++            Assert.Equal(value, VocalTechniques.Parameter(loaded, key));
++            var off = VocalTechniques.Set(loaded, 600, name, false);
++            Equal(original, off);
++            Equal(adjusted, VocalTechniques.Set(off, 600, name, true));
++            Assert.Equal(value, VocalTechniques.Parameter(off, key));
++            var note = UNote.Create(); note.pitch = on;
++            var command = new SetPitchPointsCommand(new UVoicePart(), note, adjusted);
++            command.Execute(); Equal(adjusted, note.pitch);
++            command.Unexecute(); Equal(on, note.pitch);
++        }
++
++        [Fact]
++        public void AdjustmentClampsAndPreservesOtherTechniques() {
++            var pitch = VocalTechniques.Set(VocalTechniques.Set(Original(), 20, "scoop", true), 20, "fall", true);
++            Equal(pitch, VocalTechniques.Adjust(pitch, 20, "ScoopDepth", float.NaN));
++            pitch = VocalTechniques.Adjust(pitch, 20, "ScoopDepth", 9999);
++            Assert.Equal(1200, VocalTechniques.Parameter(pitch, "ScoopDepth"));
++            Assert.True(VocalTechniques.IsEnabled(pitch, "fall"));
++            Assert.All(pitch.data, p => Assert.True(float.IsFinite(p.X) && float.IsFinite(p.Y)));
++        }
++
 +        [Fact]
 +        public void HammeringHoldsThenStepsUpAndFallDropsAtTail() {
 +            var pitch = new UPitch { data = new() { new(0, 0), new(600, 0) } };
 +            var hammer = VocalTechniques.Set(pitch, 600, "hammer", true);
-+            Assert.Equal(-10, hammer.data.Single(p => p.X == 100).Y);
-+            Assert.Equal(-10, hammer.data.Single(p => p.X == 180).Y);
-+            Assert.Equal(0, hammer.data.Single(p => p.X == 200).Y);
++            Assert.Equal(4, hammer.data.Count);
++            Assert.Equal(0, hammer.data[0].Y);
++            Assert.Equal(-10, hammer.data[1].Y);
++            Assert.Equal(180, hammer.data[2].X);
++            Assert.Equal(0, hammer.data[3].Y);
++            Assert.Equal(200, hammer.data[3].X);
 +            var fall = VocalTechniques.Set(pitch, 600, "fall", true);
-+            Assert.Equal(0, fall.data.Single(p => p.X == 450).Y);
++            Assert.Equal(0, fall.data.Single(p => p.X == 420).Y);
 +            Assert.Equal(-20, fall.data.Single(p => p.X == 600).Y);
 +        }
 +    }
 +}
+--- a/OpenUtau/Controls/PianoRoll.axaml.cs
++++ b/OpenUtau/Controls/PianoRoll.axaml.cs
+@@ -1572,6 +1572,11 @@
+             }
+
+             if (RootWindow.FocusManager != null) {
++                if (RootWindow.FocusManager.GetFocusedElement() is Slider techniqueSlider &&
++                    techniqueSlider.Tag is string techniqueTag && techniqueTag.StartsWith("Technique:") &&
++                    args.Key is Key.Left or Key.Right or Key.Up or Key.Down or Key.Home or Key.End or Key.PageUp or Key.PageDown) {
++                    return;
++                }
+                 if (RootWindow.FocusManager.GetFocusedElement() is TextBox focusedTextBox) {
+                     if (focusedTextBox.IsEnabled && focusedTextBox.IsEffectivelyVisible && focusedTextBox.IsFocused) {
+                         args.Handled = false;

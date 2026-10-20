@@ -3,9 +3,10 @@ set -eu
 
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 app=${OPENUTAU_APP:-/Applications/OpenUtau AU.app}
-version=0.1.572.1-alpha-one-click.5
-expected_app_sha=9d68dec3e4f42c0f7091b266886870b6ce9e1615d0f6224d0e1c4120e9568f4e
-expected_dll_sha=88e9b228a20beeee9d1650d42f47164056d478a694a22e6dfa00d30402f3f43c
+version=0.1.572.1-alpha-one-click.6
+expected_app_sha=ba3e30c7b12455f49dddc5921859af7d9537f6e88ce0d4617e927e4ea901ad1f
+expected_dll_sha=f2ab030178ecf594619ed25288fcf64ffa19f3c4d2d4a36a24a911d2d44d2c77
+expected_core_sha=60559e34121afba38e61acf332120c57dfb611c36e6f9825fb3aec9a3b665537
 expected_axis_sha=6a74557d75563a5e26e6b9a9eb5f81dcab1062dfe345906a133942659c78e4db
 name="OpenUtau-Logic-AU-${version}-macos-arm64"
 
@@ -20,6 +21,8 @@ test "$actual_dll_sha" = "$expected_dll_sha" || {
     echo "Expected the verified OpenUtau AU $version (arm64); found a different OpenUtau.dll." >&2
     exit 1
 }
+actual_core_sha=$(shasum -a 256 "$app/Contents/MacOS/OpenUtau.Core.dll" | awk '{print $1}')
+test "$actual_core_sha" = "$expected_core_sha" || { echo "Vocal-technique core hash mismatch." >&2; exit 1; }
 actual_axis_sha=$(shasum -a 256 "$app/Contents/MacOS/libOpenUtauPinchAxis.dylib" | awk '{print $1}')
 test "$actual_axis_sha" = "$expected_axis_sha" || { echo "Pinch-axis helper hash mismatch." >&2; exit 1; }
 test "$(uname -m)" = arm64 || { echo 'Build on Apple Silicon.' >&2; exit 1; }
@@ -69,6 +72,7 @@ ditto "$repo/distribution/README.md" "$stage/README.md"
     cd "$resources"
     shasum -a 256 'payload/OpenUtau.app/Contents/MacOS/OpenUtau' \
         'payload/OpenUtau.app/Contents/MacOS/OpenUtau.dll' \
+        'payload/OpenUtau.app/Contents/MacOS/OpenUtau.Core.dll' \
         'payload/OpenUtau.app/Contents/MacOS/libOpenUtauPinchAxis.dylib' \
         'payload/OpenUtau Bridge.component/Contents/MacOS/OpenUtau Bridge' \
         'payload/openutau-bridge-relay' > SHA256SUMS
