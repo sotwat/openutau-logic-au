@@ -20,7 +20,7 @@ Apple Silicon Mac・Logic Pro向けです。Logic Proは別途必要です。イ
 
 ## 収録内容とライセンス
 
-OpenUtau 0.1.572.1-alphaにピンチ拡大縮小とLogic向け案内を追加しています。起動時の更新通知は無効です。OpenUtauはMIT（OPENUTAU_LICENSE.txt）、ブリッジと配布コードはMPL-2.0（BRIDGE_LICENSE.txt）です。
+OpenUtau 0.1.576にピンチ拡大縮小とLogic向け案内を追加しています。起動時の更新通知は無効です。OpenUtauはMIT（OPENUTAU_LICENSE.txt）、ブリッジと配布コードはMPL-2.0（BRIDGE_LICENSE.txt）です。
 
 ソース：https://github.com/sotwat/openutau-logic-au
 

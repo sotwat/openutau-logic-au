@@ -35,7 +35,7 @@ DAM公式はハンマリングを、一つの発音を二つに分けるよう�
 
 ## 再現と検証
 
-`scripts/build_openutau_au_pinch.sh`は既存パッチに続けて`patches/openutau-vocal-techniques-0.1.572.1-alpha.patch`を適用します。変更対象はOpenUtau.dllとOpenUtau.Core.dllです。
+`scripts/build_openutau_au_pinch.sh`は既存パッチに続けて`patches/openutau-vocal-techniques-0.1.576.patch`を適用します。変更対象はOpenUtau.dllとOpenUtau.Core.dllです。
 
 上流ソースの作業フォルダで実行します。
 

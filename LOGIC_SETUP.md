@@ -4,16 +4,16 @@
 
 ## このMacでの配置
 
-- OpenUtau: `/Applications/OpenUtau.app`は公式v0.1.572.1-alphaです。`/Applications/OpenUtau AU.app`は同版を元にピアノロールのトラックパッド・ピンチ拡大縮小を追加した改造版です。指を横に広げると時間軸、縦に広げると音程軸を拡大します。タッチ位置が取得できない場合は両軸を拡大します。Logic連携とピンチ操作には後者を使います。共通設定は`Channel=alpha`、旧設定の`Beta=false`です。
+- OpenUtau: `/Applications/OpenUtau.app`は公式v0.1.576です。`/Applications/OpenUtau AU.app`は同版を元にピアノロールのトラックパッド・ピンチ拡大縮小を追加した改造版です。指を横に広げると時間軸、縦に広げると音程軸を拡大します。タッチ位置が取得できない場合は両軸を拡大します。Logic連携とピンチ操作には後者を使います。共通設定は`Channel=alpha`、旧設定の`Beta=false`です。
 - AU音源: `~/Library/Audio/Plug-Ins/Components/OpenUtau Bridge.component`。
 - ローカル中継: `~/Library/Application Support/OpenUtau Bridge/openutau-bridge-relay`。ログイン時に起動するLaunchAgentは`~/Library/LaunchAgents/moe.kakaru.openutau-bridge-relay.plist`です。
 - ビルド元: このフォルダ。AU対応と中継のソースは`CMakeLists.txt`、`src/`、`scripts/`にあります。
 
 ## 別のApple Silicon Macへの導入
 
-[GitHubの公開リリース](https://github.com/sotwat/openutau-logic-au/releases)から最新版の配布ZIP `OpenUtau-Logic-AU-0.1.572.1-alpha-one-click.7-macos-arm64.zip` を取得し、展開して「セットアップ.app」を開きます。ターミナル操作は不要です。AUの登録・検証、中継の起動まで自動で行い、成功を確認できた場合だけ完了を表示します。ピンチ対応OpenUtau AU、AU音源、中継がユーザー領域に入り、既存ファイルはバックアップされます。詳しい条件と署名に関する注意はZIP内の`README.md`を参照してください。Intel Mac向けではありません。
+[GitHubの公開リリース](https://github.com/sotwat/openutau-logic-au/releases)から最新版の配布ZIP `OpenUtau-Logic-AU-0.1.576-one-click.1-macos-arm64.zip` を取得し、展開して「セットアップ.app」を開きます。ターミナル操作は不要です。AUの登録・検証、中継の起動まで自動で行い、成功を確認できた場合だけ完了を表示します。ピンチ対応OpenUtau AU、AU音源、中継がユーザー領域に入り、既存ファイルはバックアップされます。詳しい条件と署名に関する注意はZIP内の`README.md`を参照してください。Intel Mac向けではありません。
 
-ソースから配布ZIPを作り直すときは、公式OpenUtau `0.1.572.1-alpha`のソースとarm64版アプリを用意し、`scripts/build_openutau_au_pinch.sh`でピンチ対応アプリを生成します。`OPENUTAU_SOURCE`には公式タグのチェックアウト、`OPENUTAU_PINCH_APP`には新規出力先、`DOTNET`には.NET 10 SDKを指定します。検証済みアプリを`/Applications/OpenUtau AU.app`に置き、`sh distribution/build_macos_arm64.sh`を実行します。後者は実行ファイルと`OpenUtau.dll`のSHA-256を照合してからAUと中継をビルドし、`dist/`にZIPを作ります。声ライブラリや譜面は含めません。
+ソースから配布ZIPを作り直すときは、公式OpenUtau `0.1.576`のソースとarm64版アプリを用意し、`scripts/build_openutau_au_pinch.sh`でピンチ対応アプリを生成します。`OPENUTAU_SOURCE`には公式タグのチェックアウト、`OPENUTAU_PINCH_APP`には新規出力先、`DOTNET`には.NET 10 SDKを指定します。検証済みアプリを`/Applications/OpenUtau AU.app`に置き、`sh distribution/build_macos_arm64.sh`を実行します。後者は実行ファイル・`OpenUtau.dll`・`OpenUtau.Core.dll`・ピンチ補助ライブラリのSHA-256を照合してからAUと中継をビルドし、`dist/`にZIPを作ります。声ライブラリや譜面は含めません。
 
 ## Logic Proで使う
 
@@ -71,7 +71,7 @@ AUv2のビルドには`clap-wrapper`がAppleのAudioUnitSDKを取得します。
 
 自動分配の対象はひらがなと長音記号のみの入力です。英語、音素の上書き、VCVエイリアスなどは従来どおり保持します。既存のノートの歌詞は上書きされます。
 
-パッチは`patches/openutau-direct-lyrics-0.1.572.1-alpha.patch`。適用済みの公式ソースで`dotnet run --project OpenUtau.Test -c Debug -- -class '*DirectLyricInputTest'`を実行し、9件合格。既存テストがDebug専用APIを使うためDebug構成を指定します。実アプリでも通常分配・拗音・Tabでの確定・取り消し・残り2ノートへの切り捨てを操作し、保存ファイルの歌詞を照合しました。
+パッチは`patches/openutau-direct-lyrics-0.1.576.patch`。適用済みの公式ソースで`dotnet run --project OpenUtau.Test -c Debug -- -class '*DirectLyricInputTest'`を実行し、9件合格。既存テストがDebug専用APIを使うためDebug構成を指定します。実アプリでも通常分配・拗音・Tabでの確定・取り消し・残り2ノートへの切り捨てを操作し、保存ファイルの歌詞を照合しました。
 
 ## 初回保存時のクラッシュ修正（2026-10-19）
 
@@ -90,3 +90,16 @@ python3 tests/test_macos_distribution.py dist/OpenUtau-Logic-AU-0.1.572.1-alpha-
 2026-10-20追記: メイン画面・ピアノロールでReturnを押すと、再生位置をプロジェクトの0秒へ戻します。歌詞・数値の入力中は確定を優先します。従来Returnで開いていた歌詞編集はShift＋Returnで開けます。
 
 2026-10-20追記: ピアノロールの音符を選び、「音符のプロパティ」→「歌唱テクニック」でしゃくり・フォール・ハンマリング・オーバーシュート・ヒーカップをONにし、数値とスライダーで調整できます。詳細は[VOCAL_TECHNIQUES.md](VOCAL_TECHNIQUES.md)を参照してください。
+
+## 2026-10-20：公式0.1.576への更新
+
+公式安定版`0.1.576`（ソース`bc194b6fe4897427a73066390b286e11205fd10f`）へ5つの独自パッチを移植しました。公式配布のarm64アプリを土台にし、依存ライブラリも公式最新版へ更新しています。
+
+- 維持：Logic用AUと中継、縦横別ピンチ、Shift＋矢印のオクターブ移動、Backspaceのパート削除、Returnの0秒移動、直接ひらがな分配、5種の調整可能な歌唱テクニック、更新通知の抑止、保存パネルへの干渉修正。
+- 旧ベース`0.1.572.1-alpha`以降の公式変更：Expression Graphのズーム・複数選択・コピー/貼り付け、ポルタメントプリセット適用時のピッチ初期化修正、hifisamplerのPフラグの自動ゲイン、DiffSinger音素長モデルと声色マッピングの修正、ピッチ読込範囲、VOICEVOX波形位置、外部wavtoolキャッシュ、DirectMLの安定性、表示の改善など。
+- DAW連携・hifisampler本体・トラック試聴用エフェクト・ピッチプリセットは旧ベースにも含まれていました。安定版の更新一覧は`0.1.565`からの累積なので、今回の移植で初めて追加された機能とは区別します。
+- 公式DAW連携の参照配布`openutau-vst-bridge 1.0.2`はVST3/CLAP。Logic用AUと中継はこのリポジトリの追加実装です。公式のExpression Graphズームはマウスホイール操作で、ピアノロールの縦横別ピンチとは別機能です。
+
+Releaseビルド成功。歌唱テクニック・直接歌詞入力・公式プリセット・DAW通信の136件と、実C++ブリッジでの通信/音声取得1件が合格。最初の実接続テストはホストの再生ループ指定不足で失敗し、`bridge-host --loop 4`へ修正後に成功。ネイティブ回帰テストの保存パネル100回と軸判別、AUの`auval`、配布ZIPの署名・隔離導入・再導入・データ保持・改ざん拒否も合格。実画面では起動、既存調整値の読込、Shift＋↑のD#4→D#5、Undo、保存、別名保存を確認しました。物理ピンチ、Logicでの楽曲再生、音質、別Mac実機は今回未再検証です。
+
+参照：[公式告知](https://x.com/StAkira/status/2112411669762822246)、[公式安定版](https://github.com/openutau/OpenUtau/releases/tag/0.1.576)、[旧ベースからの差分](https://github.com/openutau/OpenUtau/compare/0.1.572.1-alpha...0.1.576)。

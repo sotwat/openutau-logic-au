@@ -2,21 +2,21 @@
 set -eu
 
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-source_dir=${OPENUTAU_SOURCE:?Set OPENUTAU_SOURCE to a checkout of OpenUtau 0.1.572.1-alpha.}
+source_dir=${OPENUTAU_SOURCE:?Set OPENUTAU_SOURCE to a checkout of OpenUtau 0.1.576.}
 official_app=${OPENUTAU_OFFICIAL_APP:-/Applications/OpenUtau.app}
 output_app=${OPENUTAU_PINCH_APP:?Set OPENUTAU_PINCH_APP to a new .app path.}
 dotnet=${DOTNET:-dotnet}
-patch="$repo/patches/openutau-piano-roll-pinch-0.1.572.1-alpha.patch"
+patch="$repo/patches/openutau-piano-roll-pinch-0.1.576.patch"
 
 test "$(uname -m)" = arm64 || { echo 'Build on Apple Silicon.' >&2; exit 1; }
-test "$(git -C "$source_dir" rev-parse HEAD)" = ca49f0640a5eea783a34adafdfc440ca73222084 || {
-    echo 'Expected official OpenUtau 0.1.572.1-alpha source.' >&2
+test "$(git -C "$source_dir" rev-parse HEAD)" = bc194b6fe4897427a73066390b286e11205fd10f || {
+    echo 'Expected official OpenUtau 0.1.576 source.' >&2
     exit 1
 }
 test ! -e "$output_app" || { echo "Output already exists: $output_app" >&2; exit 1; }
 test "$(shasum -a 256 "$official_app/Contents/MacOS/OpenUtau.dll" | awk '{print $1}')" = \
-    a6738f156684a3715c0eaff5d9d5e6a72ab3198f63efab24dfdded3df57bee96 || {
-    echo 'Expected unmodified official OpenUtau 0.1.572.1-alpha app.' >&2
+    fd81ab35c3691715da0feaa8308dd534552df79e1e48ed012a95ea5add644855 || {
+    echo 'Expected unmodified official OpenUtau 0.1.576 app.' >&2
     exit 1
 }
 
@@ -27,7 +27,7 @@ elif ! git -C "$source_dir" apply --reverse --check "$patch" 2>/dev/null; then
     exit 1
 fi
 
-guide_patch="$repo/patches/openutau-logic-guide-0.1.572.1-alpha.patch"
+guide_patch="$repo/patches/openutau-logic-guide-0.1.576.patch"
 if git -C "$source_dir" apply --check "$guide_patch" 2>/dev/null; then
     git -C "$source_dir" apply "$guide_patch"
 elif ! git -C "$source_dir" apply --reverse --check "$guide_patch" 2>/dev/null; then
@@ -35,7 +35,7 @@ elif ! git -C "$source_dir" apply --reverse --check "$guide_patch" 2>/dev/null; 
     exit 1
 fi
 
-shortcut_patch="$repo/patches/openutau-keyboard-shortcuts-0.1.572.1-alpha.patch"
+shortcut_patch="$repo/patches/openutau-keyboard-shortcuts-0.1.576.patch"
 if git -C "$source_dir" apply --check "$shortcut_patch" 2>/dev/null; then
     git -C "$source_dir" apply "$shortcut_patch"
 elif ! git -C "$source_dir" apply --reverse --check "$shortcut_patch" 2>/dev/null; then
@@ -43,7 +43,7 @@ elif ! git -C "$source_dir" apply --reverse --check "$shortcut_patch" 2>/dev/nul
     exit 1
 fi
 
-lyrics_patch="$repo/patches/openutau-direct-lyrics-0.1.572.1-alpha.patch"
+lyrics_patch="$repo/patches/openutau-direct-lyrics-0.1.576.patch"
 if git -C "$source_dir" apply --check "$lyrics_patch" 2>/dev/null; then
     git -C "$source_dir" apply "$lyrics_patch"
 elif ! git -C "$source_dir" apply --reverse --check "$lyrics_patch" 2>/dev/null; then
@@ -51,7 +51,7 @@ elif ! git -C "$source_dir" apply --reverse --check "$lyrics_patch" 2>/dev/null;
     exit 1
 fi
 
-technique_patch="$repo/patches/openutau-vocal-techniques-0.1.572.1-alpha.patch"
+technique_patch="$repo/patches/openutau-vocal-techniques-0.1.576.patch"
 if git -C "$source_dir" apply --check "$technique_patch" 2>/dev/null; then
     git -C "$source_dir" apply "$technique_patch"
 elif ! git -C "$source_dir" apply --reverse --check "$technique_patch" 2>/dev/null; then
@@ -62,7 +62,7 @@ fi
 (
     cd "$source_dir"
     "$dotnet" build OpenUtau -c Release -r osx-arm64 \
-        -p:Version=0.1.572.1 -p:AssemblyVersion=0.1.572.1 -p:FileVersion=0.1.572.1 \
+        -p:Version=0.1.576 -p:AssemblyVersion=0.1.576 -p:FileVersion=0.1.576 \
         -v:quiet
 )
 
