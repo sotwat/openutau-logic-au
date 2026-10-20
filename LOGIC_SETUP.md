@@ -67,6 +67,10 @@ AUv2のビルドには`clap-wrapper`がAppleのAudioUnitSDKを取得します。
 
 再現用パッチは`patches/openutau-note-move-preview-0.1.576.patch`で、`scripts/build_openutau_au_pinch.sh`から適用します。
 
+↑／↓による半音移動、Shift＋↑／↓（Command＋↑／↓も可）によるオクターブ移動でも、移動後の短いガイド音が鳴り、約180msで自動停止します。複数選択では時間順で先頭のノートを試聴します。同時位置の場合は低い方を使います。連打すると新しい音程へ切り替えます。音域外で移動できなかった場合や未選択時には発音しません。
+
+`dotnet run --project OpenUtau.Test -c Debug -- -class '*TransposePreviewTest'`で±1/±12半音の出力波形と周波数、自動停止、ガイドOFF時の無音を検証しています。
+
 ピアノロールで音符を選択し、Shift＋↑で12半音上げ、Shift＋↓で12半音下げます。Command＋Zで取り消せます。音域の上限・下限を超える選択は移動しません。検証用2音（60・64）が上移動で72・76、下移動で60・64、取り消しで72・76になることを実アプリの保存結果で確認しました。
 
 メイン画面で選択したパートはBackspaceでも削除できます。Command＋Zで取り消せます。検証譜面のパート削除後にvoice_partsが空になり、取り消し後に2音ごと復元されることを保存結果で確認しました。

@@ -1,3 +1,42 @@
+diff --git a/OpenUtau/ViewModels/NotesViewModel.cs b/OpenUtau/ViewModels/NotesViewModel.cs
+index f64da10..46f3f91 100644
+--- a/OpenUtau/ViewModels/NotesViewModel.cs
++++ b/OpenUtau/ViewModels/NotesViewModel.cs
+@@ -827,6 +827,9 @@ public void InsertNote() {
+             DocManager.Inst.EndUndoGroup();
+         }
+
++        private IDisposable? transposeToneTimer;
++        private int? transposeTone;
++
+         public void TransposeSelection(int deltaNoteNum) {
+             if (Part == null || Selection.IsEmpty) {
+                 return;
+@@ -838,6 +841,24 @@ public void TransposeSelection(int deltaNoteNum) {
+             DocManager.Inst.StartUndoGroup("command.note.move");
+             DocManager.Inst.ExecuteCmd(new MoveNoteCommand(Part, selectedNotes, 0, deltaNoteNum));
+             DocManager.Inst.EndUndoGroup();
++            transposeToneTimer?.Dispose();
++            StopTransposeTone();
++            if (Preferences.Default.PlayTone) {
++                if (PlaybackManager.Inst.PlayingMaster) {
++                    PlaybackManager.Inst.StopPlayback();
++                }
++                transposeTone = selectedNotes.OrderBy(n => n.position).ThenBy(n => n.tone).First().tone;
++                PlaybackManager.Inst.PlayTone(MusicMath.ToneToFreq(transposeTone.Value));
++                transposeToneTimer = Avalonia.Threading.DispatcherTimer.RunOnce(
++                    StopTransposeTone, TimeSpan.FromMilliseconds(180));
++            }
++        }
++        private void StopTransposeTone() {
++            if (transposeTone.HasValue) {
++                PlaybackManager.Inst.EndTone(MusicMath.ToneToFreq(transposeTone.Value));
++                transposeTone = null;
++            }
++            transposeToneTimer = null;
+         }
+         public void MoveSelectedNotes(int deltaTicks) {
+             if (Part == null || Selection.IsEmpty) {
 diff --git a/OpenUtau/Views/NoteEditStates.cs b/OpenUtau/Views/NoteEditStates.cs
 index fb66ae7..7259e42 100644
 --- a/OpenUtau/Views/NoteEditStates.cs
@@ -36,4 +75,73 @@ index fb66ae7..7259e42 100644
 +            base.End(pointer, point);
          }
      }
- 
+
+diff --git a/OpenUtau.Test/App/TransposePreviewTest.cs b/OpenUtau.Test/App/TransposePreviewTest.cs
+new file mode 100644
+index 0000000..568b101
+--- /dev/null
++++ b/OpenUtau.Test/App/TransposePreviewTest.cs
+@@ -0,0 +1,63 @@
++using System;
++using System.Linq;
++using Avalonia.Threading;
++using OpenUtau.App.ViewModels;
++using OpenUtau.Core;
++using OpenUtau.Core.Ustx;
++using OpenUtau.Core.Util;
++using ReactiveUI.Builder;
++using Xunit;
++
++namespace OpenUtau.App {
++    [Collection(RenderSingletonCollection.Name)]
++    public class TransposePreviewTest {
++        [Fact]
++        public void TranspositionProducesCorrectPitchAndStopsWithoutKeyUp() {
++            RxAppBuilder.CreateReactiveUIBuilder().WithCoreServices().BuildApp();
++            var project = new UProject();
++            var part = new UVoicePart { trackNo = 0 };
++            project.tracks.Add(new UTrack());
++            project.parts.Add(part);
++            var note = project.CreateNote(60, 0, 480);
++            part.notes.Add(note);
++            var previous = DocManager.Inst.TakeProjectForTest(project);
++            bool previousPlayTone = Preferences.Default.PlayTone;
++            NotesViewModel? vm = null;
++            try {
++                DocManager.Inst.CommandSink = cmd => cmd.Execute();
++                vm = new NotesViewModel { Part = part };
++                vm.SelectNote(note);
++                Preferences.Default.PlayTone = true;
++                foreach (int delta in new[] { 1, -1, 12, -12 }) {
++                    int expectedTone = note.tone + delta;
++                    vm.TransposeSelection(delta);
++                    Assert.Equal(expectedTone, note.tone);
++                    var samples = new float[8820];
++                    PlaybackManager.Inst.toneGenerator.Mix(0, samples, 0, samples.Length);
++                    Assert.True(samples.Any(s => Math.Abs(s) > 0.01));
++                    int crossings = Enumerable.Range(1, 4409)
++                        .Count(i => samples[(i - 1) * 2] <= 0 && samples[i * 2] > 0);
++                    Assert.InRange(crossings * 10.0, MusicMath.ToneToFreq(expectedTone) - 15,
++                        MusicMath.ToneToFreq(expectedTone) + 15);
++                    var frame = new DispatcherFrame();
++                    DispatcherTimer.RunOnce(() => frame.Continue = false, TimeSpan.FromMilliseconds(260));
++                    Dispatcher.UIThread.PushFrame(frame);
++                    Array.Clear(samples);
++                    PlaybackManager.Inst.toneGenerator.Mix(0, samples, 0, samples.Length);
++                    Assert.All(samples.Skip(4000), sample => Assert.Equal(0f, sample));
++                }
++                Preferences.Default.PlayTone = false;
++                vm.TransposeSelection(1);
++                var silent = new float[8820];
++                PlaybackManager.Inst.toneGenerator.Mix(0, silent, 0, silent.Length);
++                Assert.All(silent, sample => Assert.Equal(0f, sample));
++            } finally {
++                if (vm != null) DocManager.Inst.RemoveSubscriber(vm);
++                PlaybackManager.Inst.EndAllTones();
++                Preferences.Default.PlayTone = previousPlayTone;
++                DocManager.Inst.CommandSink = null!;
++                DocManager.Inst.TakeProjectForTest(previous);
++            }
++        }
++    }
++}

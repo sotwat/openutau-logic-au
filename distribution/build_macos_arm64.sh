@@ -5,7 +5,7 @@ repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 app=${OPENUTAU_APP:-/Applications/OpenUtau AU.app}
 version=0.1.576-one-click.2
 expected_app_sha=44b0e83ef70816b9979a275f45ade8b8d96e35fd69a9c2227ba023e144d2f046
-expected_dll_sha=d515aeb531327df7e70f4b800b801518a6704cc7f8c581122be25ed2fa570b6b
+expected_dll_sha=d97fa88c09f4edce0eb85f3e3093a8f1feb27c3ff6283aaf1a25ab10b528411b
 expected_core_sha=9ec783a3870cc4af0a5654db50444fb28f55382a062d2229be43d43cbea92bba
 expected_axis_sha=85dcd208642dbfc19691d4594fc1ec65b630e644420dacb9f01e00b9d89a2780
 name="OpenUtau-Logic-AU-${version}-macos-arm64"
