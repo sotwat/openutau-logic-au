@@ -11,7 +11,7 @@
 
 ## 別のApple Silicon Macへの導入
 
-[GitHubの公開リリース](https://github.com/sotwat/openutau-logic-au/releases)から最新版の配布ZIP `OpenUtau-Logic-AU-0.1.572.1-alpha-one-click.6-macos-arm64.zip` を取得し、展開して「セットアップ.app」を開きます。ターミナル操作は不要です。AUの登録・検証、中継の起動まで自動で行い、成功を確認できた場合だけ完了を表示します。ピンチ対応OpenUtau AU、AU音源、中継がユーザー領域に入り、既存ファイルはバックアップされます。詳しい条件と署名に関する注意はZIP内の`README.md`を参照してください。Intel Mac向けではありません。
+[GitHubの公開リリース](https://github.com/sotwat/openutau-logic-au/releases)から最新版の配布ZIP `OpenUtau-Logic-AU-0.1.572.1-alpha-one-click.7-macos-arm64.zip` を取得し、展開して「セットアップ.app」を開きます。ターミナル操作は不要です。AUの登録・検証、中継の起動まで自動で行い、成功を確認できた場合だけ完了を表示します。ピンチ対応OpenUtau AU、AU音源、中継がユーザー領域に入り、既存ファイルはバックアップされます。詳しい条件と署名に関する注意はZIP内の`README.md`を参照してください。Intel Mac向けではありません。
 
 ソースから配布ZIPを作り直すときは、公式OpenUtau `0.1.572.1-alpha`のソースとarm64版アプリを用意し、`scripts/build_openutau_au_pinch.sh`でピンチ対応アプリを生成します。`OPENUTAU_SOURCE`には公式タグのチェックアウト、`OPENUTAU_PINCH_APP`には新規出力先、`DOTNET`には.NET 10 SDKを指定します。検証済みアプリを`/Applications/OpenUtau AU.app`に置き、`sh distribution/build_macos_arm64.sh`を実行します。後者は実行ファイルと`OpenUtau.dll`のSHA-256を照合してからAUと中継をビルドし、`dist/`にZIPを作ります。声ライブラリや譜面は含めません。
 
@@ -89,4 +89,4 @@ python3 tests/test_macos_distribution.py dist/OpenUtau-Logic-AU-0.1.572.1-alpha-
 
 2026-10-20追記: メイン画面・ピアノロールでReturnを押すと、再生位置をプロジェクトの0秒へ戻します。歌詞・数値の入力中は確定を優先します。従来Returnで開いていた歌詞編集はShift＋Returnで開けます。
 
-2026-10-20追記: ピアノロールの音符を選び、「音符のプロパティ」→「歌唱テクニック」でしゃくり・フォール・ハンマリングをONにし、数値とスライダーで調整できます。詳細は[VOCAL_TECHNIQUES.md](VOCAL_TECHNIQUES.md)を参照してください。
+2026-10-20追記: ピアノロールの音符を選び、「音符のプロパティ」→「歌唱テクニック」でしゃくり・フォール・ハンマリング・オーバーシュート・ヒーカップをONにし、数値とスライダーで調整できます。詳細は[VOCAL_TECHNIQUES.md](VOCAL_TECHNIQUES.md)を参照してください。
