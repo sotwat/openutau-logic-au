@@ -5,7 +5,7 @@
          public List<PitchPoint> data = new List<PitchPoint>();
          public bool snapFirst = true;
 +        public VocalTechniqueState? techniques;
- 
+
          public void AddPoint(PitchPoint p) {
              data.Add(p);
 @@ -515,6 +516,7 @@
@@ -21,7 +21,7 @@
 @@ -158,8 +158,34 @@
              DocManager.Inst.AddSubscriber(this);
          }
- 
+
 +        public bool ScoopEnabled => AllTechniqueEnabled("scoop");
 +        public bool FallEnabled => AllTechniqueEnabled("fall");
 +        public bool HammerEnabled => AllTechniqueEnabled("hammer");
@@ -66,7 +66,7 @@
 @@ -110,6 +110,12 @@
              }
          }
- 
+
 +        void TechniqueClicked(object sender, RoutedEventArgs e) {
 +            if (sender is Control control && control.Tag is string name) {
 +                ViewModel.ToggleTechnique(name);
@@ -81,7 +81,7 @@
 @@ -107,6 +107,29 @@
            </StackPanel>
          </Expander>
- 
+
 +        <Expander Header="歌唱テクニック" IsExpanded="True" HorizontalAlignment="Stretch" Margin="0,2,4,2">
 +          <StackPanel IsEnabled="{Binding IsNoteSelected}">
 +            <Grid ColumnDefinitions="143,*">
