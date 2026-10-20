@@ -51,6 +51,14 @@ elif ! git -C "$source_dir" apply --reverse --check "$lyrics_patch" 2>/dev/null;
     exit 1
 fi
 
+technique_patch="$repo/patches/openutau-vocal-techniques-0.1.572.1-alpha.patch"
+if git -C "$source_dir" apply --check "$technique_patch" 2>/dev/null; then
+    git -C "$source_dir" apply "$technique_patch"
+elif ! git -C "$source_dir" apply --reverse --check "$technique_patch" 2>/dev/null; then
+    echo 'Source differs from the expected vocal techniques patch state.' >&2
+    exit 1
+fi
+
 (
     cd "$source_dir"
     "$dotnet" build OpenUtau -c Release -r osx-arm64 \
@@ -61,6 +69,8 @@ fi
 ditto "$official_app" "$output_app"
 ditto "$source_dir/OpenUtau/bin/Release/net10.0/osx-arm64/OpenUtau.dll" \
     "$output_app/Contents/MacOS/OpenUtau.dll"
+ditto "$source_dir/OpenUtau/bin/Release/net10.0/osx-arm64/OpenUtau.Core.dll" \
+    "$output_app/Contents/MacOS/OpenUtau.Core.dll"
 clang -dynamiclib -fobjc-arc -fblocks -framework AppKit -arch arm64 \
     ${OPENUTAU_PINCH_DEBUG:+-DOPENUTAU_PINCH_DEBUG} \
     "$repo/native/openutau_pinch_axis.m" \

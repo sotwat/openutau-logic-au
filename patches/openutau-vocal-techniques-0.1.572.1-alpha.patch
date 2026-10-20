@@ -1,0 +1,313 @@
+--- a/OpenUtau.Core/Ustx/UNote.cs
++++ b/OpenUtau.Core/Ustx/UNote.cs
+@@ -501,6 +501,7 @@
+     public class UPitch {
+         public List<PitchPoint> data = new List<PitchPoint>();
+         public bool snapFirst = true;
++        public VocalTechniqueState? techniques;
+ 
+         public void AddPoint(PitchPoint p) {
+             data.Add(p);
+@@ -515,6 +516,7 @@
+             var result = new UPitch() {
+                 data = data.Select(p => p.Clone()).ToList(),
+                 snapFirst = snapFirst,
++                techniques = techniques?.Clone(),
+             };
+             return result;
+         }
+--- a/OpenUtau/ViewModels/NotePropertiesViewModel.cs
++++ b/OpenUtau/ViewModels/NotePropertiesViewModel.cs
+@@ -158,8 +158,34 @@
+             DocManager.Inst.AddSubscriber(this);
+         }
+ 
++        public bool ScoopEnabled => AllTechniqueEnabled("scoop");
++        public bool FallEnabled => AllTechniqueEnabled("fall");
++        public bool HammerEnabled => AllTechniqueEnabled("hammer");
++
++        private bool AllTechniqueEnabled(string name) => selectedNotes.Count > 0 &&
++            selectedNotes.All(n => VocalTechniques.IsEnabled(n.pitch, name));
++
++        private void RefreshTechniques() {
++            this.RaisePropertyChanged(nameof(ScoopEnabled));
++            this.RaisePropertyChanged(nameof(FallEnabled));
++            this.RaisePropertyChanged(nameof(HammerEnabled));
++        }
++
++        public void ToggleTechnique(string name) {
++            if (Part == null || selectedNotes.Count == 0) { return; }
++            bool enabled = !AllTechniqueEnabled(name);
++            DocManager.Inst.StartUndoGroup("command.pitch.editpoint");
++            foreach (var note in selectedNotes) {
++                var pitch = VocalTechniques.Set(note.pitch, note.DurationMs, name, enabled);
++                DocManager.Inst.ExecuteCmd(new SetPitchPointsCommand(Part, note, pitch));
++            }
++            DocManager.Inst.EndUndoGroup();
++            RefreshTechniques();
++        }
++
+         // note -> panel
+         private void OnSelectNotes() {
++            RefreshTechniques();
+             this.RaisePropertyChanged(nameof(Title));
+             ApplyPortamentoPreset = null;
+             ApplyVibratoPreset = null;
+@@ -417,6 +443,7 @@
+                 }
+             } else if (cmd is ExpCommand) {
+                 if (cmd is PitchExpCommand) {
++                    RefreshTechniques();
+                     if (note.pitch.data.Count >= 2) {
+                         PortamentoLength = note.pitch.data.Last().X - note.pitch.data.First().X;
+                         PortamentoStart = note.pitch.data.First().X;
+--- a/OpenUtau/Controls/NotePropertiesControl.axaml.cs
++++ b/OpenUtau/Controls/NotePropertiesControl.axaml.cs
+@@ -110,6 +110,12 @@
+             }
+         }
+ 
++        void TechniqueClicked(object sender, RoutedEventArgs e) {
++            if (sender is Control control && control.Tag is string name) {
++                ViewModel.ToggleTechnique(name);
++            }
++        }
++
+         void VibratoEnableClicked(object sender, RoutedEventArgs e) {
+             ViewModel.SetVibratoEnable();
+         }
+--- a/OpenUtau/Controls/NotePropertiesControl.axaml
++++ b/OpenUtau/Controls/NotePropertiesControl.axaml
+@@ -107,6 +107,29 @@
+           </StackPanel>
+         </Expander>
+ 
++        <Expander Header="歌唱テクニック" IsExpanded="True" HorizontalAlignment="Stretch" Margin="0,2,4,2">
++          <StackPanel IsEnabled="{Binding IsNoteSelected}">
++            <Grid ColumnDefinitions="143,*">
++              <Label Content="しゃくり"/>
++              <ToggleSwitch Grid.Column="1" IsChecked="{Binding ScoopEnabled, Mode=OneWay}"
++                OnContent="{DynamicResource button.on}" OffContent="{DynamicResource button.off}"
++                Tag="scoop" Click="TechniqueClicked"/>
++            </Grid>
++            <Grid ColumnDefinitions="143,*">
++              <Label Content="フォール"/>
++              <ToggleSwitch Grid.Column="1" IsChecked="{Binding FallEnabled, Mode=OneWay}"
++                OnContent="{DynamicResource button.on}" OffContent="{DynamicResource button.off}"
++                Tag="fall" Click="TechniqueClicked"/>
++            </Grid>
++            <Grid ColumnDefinitions="143,*">
++              <Label Content="ハンマリング"/>
++              <ToggleSwitch Grid.Column="1" IsChecked="{Binding HammerEnabled, Mode=OneWay}"
++                OnContent="{DynamicResource button.on}" OffContent="{DynamicResource button.off}"
++                Tag="hammer" Click="TechniqueClicked"/>
++            </Grid>
++          </StackPanel>
++        </Expander>
++
+         <Expander Header="{DynamicResource notedefaults.vibrato}" HorizontalAlignment="Stretch" Margin="0,2,4,2">
+           <StackPanel IsEnabled="{Binding IsNoteSelected}">
+             <ToggleSwitch IsChecked="{Binding VibratoEnable, Mode=OneWay}" OnContent="{DynamicResource button.on}" OffContent="{DynamicResource button.off}"
+--- /dev/null
++++ b/OpenUtau.Core/Ustx/VocalTechniques.cs
+@@ -0,0 +1,111 @@
++using System;
++using System.Collections.Generic;
++using System.Linq;
++using OpenUtau.Core.Util;
++
++namespace OpenUtau.Core.Ustx {
++    public class VocalTechniqueState {
++        public List<PitchPoint> original = new();
++        public List<PitchPoint> applied = new();
++        public bool originalSnapFirst;
++        public bool scoop;
++        public bool fall;
++        public bool hammer;
++
++        public VocalTechniqueState Clone() => new() {
++            original = original.Select(p => p.Clone()).ToList(),
++            applied = applied.Select(p => p.Clone()).ToList(),
++            originalSnapFirst = originalSnapFirst,
++            scoop = scoop, fall = fall, hammer = hammer,
++        };
++    }
++
++    public static class VocalTechniques {
++        // Pitch points use tenths of a semitone; times below are milliseconds.
++        private static bool Matches(UPitch pitch) => pitch.techniques is { } state &&
++            !pitch.snapFirst && pitch.data.Count == state.applied.Count &&
++            pitch.data.Zip(state.applied).All(pair =>
++                pair.First.X == pair.Second.X && pair.First.Y == pair.Second.Y &&
++                pair.First.shape == pair.Second.shape);
++
++        public static bool IsEnabled(UPitch pitch, string name) {
++            if (!Matches(pitch)) { return false; }
++            return name switch {
++                "scoop" => pitch.techniques!.scoop,
++                "fall" => pitch.techniques!.fall,
++                "hammer" => pitch.techniques!.hammer,
++                _ => false,
++            };
++        }
++
++        public static UPitch Set(UPitch pitch, double durationMs, string name, bool enabled) {
++            if (name != "scoop" && name != "fall" && name != "hammer") {
++                throw new ArgumentException("Unknown vocal technique", nameof(name));
++            }
++            var state = Matches(pitch) ? pitch.techniques!.Clone() : new VocalTechniqueState {
++                original = pitch.data.Select(p => p.Clone()).ToList(),
++                originalSnapFirst = pitch.snapFirst,
++            };
++            switch (name) {
++                case "scoop": state.scoop = enabled; break;
++                case "fall": state.fall = enabled; break;
++                case "hammer": state.hammer = enabled; break;
++            }
++            if (!state.scoop && !state.fall && !state.hammer) {
++                return new UPitch { data = state.original, snapFirst = state.originalSnapFirst };
++            }
++            float duration = (float)Math.Max(1, double.IsFinite(durationMs) ? durationMs : 1);
++            float scoopEnd = Math.Min(140, duration * .25f);
++            float hammerStep = Math.Min(180, duration * .35f);
++            float hammerEnd = hammerStep + Math.Min(20, duration * .04f);
++            float fallStart = duration - Math.Min(180, duration * .25f);
++            var xs = new SortedSet<float>(state.original.Select(p => p.X)) { 0, duration };
++            // Sample the original curves and each short envelope, keeping long notes bounded.
++            for (int i = 0; i + 1 < state.original.Count; ++i) {
++                var a = state.original[i]; var b = state.original[i + 1];
++                int steps = Math.Clamp((int)Math.Ceiling((b.X - a.X) / 10), 1, 200);
++                for (int j = 1; j < steps; ++j) { xs.Add(a.X + (b.X - a.X) * j / steps); }
++            }
++            void Segment(float a, float b) {
++                xs.Add(a); xs.Add(b);
++                for (float x = a + 10; x < b; x += 10) { xs.Add(x); }
++            }
++            if (state.scoop) { Segment(0, scoopEnd); }
++            if (state.hammer) { Segment(0, hammerStep); Segment(hammerStep, hammerEnd); }
++            if (state.fall) { Segment(fallStart, duration); }
++            float Base(float x) {
++                if (state.original.Count == 0) { return 0; }
++                for (int i = 0; i + 1 < state.original.Count; ++i) {
++                    var a = state.original[i]; var b = state.original[i + 1];
++                    if (a.X <= x && x <= b.X && a.X < b.X) {
++                        return (float)MusicMath.InterpolateShape(a.X, b.X, a.Y, b.Y, x, a.shape);
++                    }
++                }
++                return x < state.original[0].X ? state.original[0].Y : state.original[^1].Y;
++            }
++            float Offset(float x) {
++                if (x < 0) { return 0; }
++                float y = 0;
++                if (state.scoop && x < scoopEnd) {
++                    float t = x / scoopEnd;
++                    y -= 15 * (1 - t) * (1 - t);
++                }
++                if (state.hammer && x < hammerEnd) {
++                    y -= x <= hammerStep ? 10 : 10 * (hammerEnd - x) / (hammerEnd - hammerStep);
++                }
++                if (state.fall && x > fallStart) {
++                    float t = Math.Min(1, (x - fallStart) / (duration - fallStart));
++                    y -= 20 * t * t;
++                }
++                return y;
++            }
++            var result = new UPitch {
++                snapFirst = false,
++                data = xs.Select(x => new PitchPoint(x, Base(x) + Offset(x), PitchPointShape.l)).ToList(),
++                techniques = state,
++            };
++            state.applied = result.data.Select(p => p.Clone()).ToList();
++            return result;
++        }
++    }
++}
+--- /dev/null
++++ b/OpenUtau.Test/Core/Util/VocalTechniquesTest.cs
+@@ -0,0 +1,86 @@
++using System;
++using System.Linq;
++using OpenUtau.Core.Ustx;
++using Xunit;
++
++namespace OpenUtau.Core.Util {
++    public class VocalTechniquesTest {
++        private UPitch Original() => new() {
++            snapFirst = true,
++            data = new() { new(-40, 2), new(40, 0), new(300, 3) },
++        };
++        private static void Equal(UPitch a, UPitch b) {
++            Assert.Equal(a.snapFirst, b.snapFirst);
++            Assert.Equal(a.data.Select(p => (p.X, p.Y, p.shape)), b.data.Select(p => (p.X, p.Y, p.shape)));
++        }
++        [Theory]
++        [InlineData("scoop")]
++        [InlineData("fall")]
++        [InlineData("hammer")]
++        public void ToggleRestoresOriginalAndPersists(string name) {
++            var original = Original();
++            var on = VocalTechniques.Set(original, 600, name, true);
++            Assert.True(VocalTechniques.IsEnabled(on, name));
++            var restored = Yaml.DefaultDeserializer.Deserialize<UPitch>(Yaml.DefaultSerializer.Serialize(on));
++            Assert.True(VocalTechniques.IsEnabled(restored, name));
++            Equal(original, VocalTechniques.Set(restored, 600, name, false));
++            Equal(original, Original());
++        }
++        [Fact]
++        public void CombinesAndDisablesIndependentlyWithoutAccumulation() {
++            var original = Original();
++            var a = VocalTechniques.Set(original, 600, "scoop", true);
++            var b = VocalTechniques.Set(a, 600, "fall", true);
++            var c = VocalTechniques.Set(b, 600, "hammer", true);
++            Assert.True(VocalTechniques.IsEnabled(c, "scoop"));
++            Assert.True(VocalTechniques.IsEnabled(c, "fall"));
++            var d = VocalTechniques.Set(c, 600, "hammer", false);
++            Equal(b, d);
++            Equal(c, VocalTechniques.Set(c, 600, "hammer", true));
++            Equal(original, VocalTechniques.Set(VocalTechniques.Set(d, 600, "fall", false), 600, "scoop", false));
++        }
++        [Fact]
++        public void ManualEditsBecomeNewBaseline() {
++            var pitch = VocalTechniques.Set(Original(), 600, "scoop", true);
++            pitch.data[2].Y += 3;
++            Assert.False(VocalTechniques.IsEnabled(pitch, "scoop"));
++            var saved = pitch.Clone();
++            Equal(saved, VocalTechniques.Set(VocalTechniques.Set(pitch, 600, "fall", true), 600, "fall", false));
++        }
++        [Fact]
++        public void CloneAndUndoDoNotShareTechniqueState() {
++            var part = new UVoicePart();
++            var note = UNote.Create(); note.pitch = Original();
++            var original = note.pitch.Clone();
++            var command = new SetPitchPointsCommand(part, note, VocalTechniques.Set(note.pitch, 600, "hammer", true));
++            command.Execute();
++            var clone = note.Clone();
++            clone.pitch.techniques!.original[0].Y = 999;
++            Assert.NotEqual(999, note.pitch.techniques!.original[0].Y);
++            command.Unexecute(); Equal(original, note.pitch);
++            command.Execute(); Assert.True(VocalTechniques.IsEnabled(note.pitch, "hammer"));
++        }
++        [Theory]
++        [InlineData(1)] [InlineData(20)] [InlineData(600)] [InlineData(60000)]
++        public void EnvelopesAreFiniteAndOrdered(double duration) {
++            var pitch = new UPitch { data = new() { new(-40, 0), new(40, 0) } };
++            foreach (var name in new[] { "scoop", "fall", "hammer" }) {
++                pitch = VocalTechniques.Set(pitch, duration, name, true);
++            }
++            Assert.All(pitch.data, p => Assert.True(float.IsFinite(p.X) && float.IsFinite(p.Y)));
++            Assert.True(pitch.data.Zip(pitch.data.Skip(1)).All(p => p.First.X < p.Second.X));
++            Assert.True(pitch.data.Count < 400);
++        }
++        [Fact]
++        public void HammeringHoldsThenStepsUpAndFallDropsAtTail() {
++            var pitch = new UPitch { data = new() { new(0, 0), new(600, 0) } };
++            var hammer = VocalTechniques.Set(pitch, 600, "hammer", true);
++            Assert.Equal(-10, hammer.data.Single(p => p.X == 100).Y);
++            Assert.Equal(-10, hammer.data.Single(p => p.X == 180).Y);
++            Assert.Equal(0, hammer.data.Single(p => p.X == 200).Y);
++            var fall = VocalTechniques.Set(pitch, 600, "fall", true);
++            Assert.Equal(0, fall.data.Single(p => p.X == 450).Y);
++            Assert.Equal(-20, fall.data.Single(p => p.X == 600).Y);
++        }
++    }
++}
