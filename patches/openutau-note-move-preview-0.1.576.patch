@@ -1,0 +1,39 @@
+diff --git a/OpenUtau/Views/NoteEditStates.cs b/OpenUtau/Views/NoteEditStates.cs
+index fb66ae7..7259e42 100644
+--- a/OpenUtau/Views/NoteEditStates.cs
++++ b/OpenUtau/Views/NoteEditStates.cs
+@@ -152,6 +152,7 @@ class NoteMoveEditState : NoteEditState {
+         public UNote note;
+         private double xOffset;
+         private bool duplicated = true;
++        private int? activeTone;
+         protected override bool ShowValueTip => false;
+         protected override string? commandNameKey => commandNameKeyLocal;
+         private string commandNameKeyLocal = "command.note.move";
+@@ -238,6 +239,26 @@ public override void Update(IPointer pointer, Point point) {
+             } else {
+                 DocManager.Inst.ExecuteCmd(new MoveNoteCommand(part, notes, deltaTick, deltaTone));
+             }
++            if (deltaTone != 0) {
++                if (activeTone.HasValue) {
++                    PlaybackManager.Inst.EndTone(MusicMath.ToneToFreq(activeTone.Value));
++                    activeTone = null;
++                }
++                if (Preferences.Default.PlayTone) {
++                    if (PlaybackManager.Inst.PlayingMaster) {
++                        PlaybackManager.Inst.StopPlayback();
++                    }
++                    activeTone = note.tone;
++                    PlaybackManager.Inst.PlayTone(MusicMath.ToneToFreq(activeTone.Value));
++                }
++            }
++        }
++        public override void End(IPointer pointer, Point point) {
++            if (activeTone.HasValue) {
++                PlaybackManager.Inst.EndTone(MusicMath.ToneToFreq(activeTone.Value));
++                activeTone = null;
++            }
++            base.End(pointer, point);
+         }
+     }
+ 

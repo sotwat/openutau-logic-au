@@ -59,6 +59,14 @@ elif ! git -C "$source_dir" apply --reverse --check "$technique_patch" 2>/dev/nu
     exit 1
 fi
 
+preview_patch="$repo/patches/openutau-note-move-preview-0.1.576.patch"
+if git -C "$source_dir" apply --check "$preview_patch" 2>/dev/null; then
+    git -C "$source_dir" apply "$preview_patch"
+elif ! git -C "$source_dir" apply --reverse --check "$preview_patch" 2>/dev/null; then
+    echo 'Source differs from the expected note move preview patch state.' >&2
+    exit 1
+fi
+
 (
     cd "$source_dir"
     "$dotnet" build OpenUtau -c Release -r osx-arm64 \
