@@ -18,13 +18,14 @@
          }
 --- a/OpenUtau/ViewModels/NotePropertiesViewModel.cs
 +++ b/OpenUtau/ViewModels/NotePropertiesViewModel.cs
-@@ -158,8 +158,93 @@
+@@ -153,8 +153,101 @@
              DocManager.Inst.AddSubscriber(this);
          }
 
 +        public bool ScoopEnabled => AllTechniqueEnabled("scoop");
 +        public bool FallEnabled => AllTechniqueEnabled("fall");
 +        public bool HammerEnabled => AllTechniqueEnabled("hammer");
++        public bool PullEnabled => AllTechniqueEnabled("pull");
 +        public bool OvershootEnabled => AllTechniqueEnabled("overshoot");
 +        public bool RiseEnabled => AllTechniqueEnabled("rise");
 +
@@ -43,6 +44,9 @@
 +        public float HammerDepth => selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "HammerDepth") : VocalTechniques.Parameter(selectedNotes.First().pitch, "HammerDepth");
 +        public float HammerLength => selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "HammerLength") : VocalTechniques.Parameter(selectedNotes.First().pitch, "HammerLength");
 +        public float HammerRise => selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "HammerRise") : VocalTechniques.Parameter(selectedNotes.First().pitch, "HammerRise");
++        public float PullDepth => selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "PullDepth") : VocalTechniques.Parameter(selectedNotes.First().pitch, "PullDepth");
++        public float PullLength => selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "PullLength") : VocalTechniques.Parameter(selectedNotes.First().pitch, "PullLength");
++        public float PullDrop => selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "PullDrop") : VocalTechniques.Parameter(selectedNotes.First().pitch, "PullDrop");
 +        public float OvershootDepth => selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "OvershootDepth") : VocalTechniques.Parameter(selectedNotes.First().pitch, "OvershootDepth");
 +        public float OvershootLength => selectedNotes.Count == 0 ? VocalTechniques.Parameter(new UPitch(), "OvershootLength") : VocalTechniques.Parameter(selectedNotes.First().pitch, "OvershootLength");
 +        public int OvershootCurve {
@@ -80,6 +84,9 @@
 +            this.RaisePropertyChanged(nameof(HammerDepth));
 +            this.RaisePropertyChanged(nameof(HammerLength));
 +            this.RaisePropertyChanged(nameof(HammerRise));
++            this.RaisePropertyChanged(nameof(PullDepth));
++            this.RaisePropertyChanged(nameof(PullLength));
++            this.RaisePropertyChanged(nameof(PullDrop));
 +            this.RaisePropertyChanged(nameof(OvershootDepth));
 +            this.RaisePropertyChanged(nameof(OvershootLength));
 +            this.RaisePropertyChanged(nameof(OvershootCurve));
@@ -90,6 +97,7 @@
 +            this.RaisePropertyChanged(nameof(ScoopEnabled));
 +            this.RaisePropertyChanged(nameof(FallEnabled));
 +            this.RaisePropertyChanged(nameof(HammerEnabled));
++            this.RaisePropertyChanged(nameof(PullEnabled));
 +            this.RaisePropertyChanged(nameof(OvershootEnabled));
 +            this.RaisePropertyChanged(nameof(RiseEnabled));
 +        }
@@ -112,7 +120,7 @@
              this.RaisePropertyChanged(nameof(Title));
              ApplyPortamentoPreset = null;
              ApplyVibratoPreset = null;
-@@ -417,6 +502,7 @@
+@@ -412,6 +505,7 @@
                  }
              } else if (cmd is ExpCommand) {
                  if (cmd is PitchExpCommand) {
@@ -120,7 +128,7 @@
                      if (note.pitch.data.Count >= 2) {
                          PortamentoLength = note.pitch.data.Last().X - note.pitch.data.First().X;
                          PortamentoStart = note.pitch.data.First().X;
-@@ -457,7 +543,16 @@
+@@ -452,7 +546,16 @@
          // panel -> note
          public void SetNoteParams(string tag, object? obj) {
              if (AllowNoteEdit && Part != null && selectedNotes.Count > 0) {
@@ -174,7 +182,7 @@
          private void OnKeyDown(object? sender, KeyEventArgs e) {
 --- a/OpenUtau/Controls/NotePropertiesControl.axaml
 +++ b/OpenUtau/Controls/NotePropertiesControl.axaml
-@@ -107,6 +107,157 @@
+@@ -107,6 +107,183 @@
            </StackPanel>
          </Expander>
 
@@ -267,6 +275,32 @@
 +              </Grid>
 +            </StackPanel>
 +            <Grid ColumnDefinitions="143,*">
++              <Label Content="プリング"/>
++              <ToggleSwitch Grid.Column="1" IsChecked="{Binding PullEnabled, Mode=OneWay}"
++                OnContent="{DynamicResource button.on}" OffContent="{DynamicResource button.off}"
++                Tag="pull" Click="TechniqueClicked"/>
++            </Grid>
++            <StackPanel IsVisible="{Binding PullEnabled}">
++              <Grid ColumnDefinitions="130,20,50,20,*">
++                <Label Content="下げ幅 (cent)"/>
++                <TextBox Grid.Column="2" Text="{Binding PullDepth, Mode=OneWay}" Tag="Technique:PullDepth"/>
++                <Slider Grid.Column="4" Classes="fader" Value="{Binding PullDepth, Mode=OneWay}"
++                  Minimum="0" Maximum="1200" TickFrequency="1" IsSnapToTickEnabled="True" KeyUp="TechniqueSliderKeyUp" Tag="Technique:PullDepth"/>
++              </Grid>
++              <Grid ColumnDefinitions="130,20,50,20,*">
++                <Label Content="保持 (ms)"/>
++                <TextBox Grid.Column="2" Text="{Binding PullLength, Mode=OneWay}" Tag="Technique:PullLength"/>
++                <Slider Grid.Column="4" Classes="fader" Value="{Binding PullLength, Mode=OneWay}"
++                  Minimum="1" Maximum="2000" TickFrequency="1" IsSnapToTickEnabled="True" KeyUp="TechniqueSliderKeyUp" Tag="Technique:PullLength"/>
++              </Grid>
++              <Grid ColumnDefinitions="130,20,50,20,*">
++                <Label Content="下降 (ms)"/>
++                <TextBox Grid.Column="2" Text="{Binding PullDrop, Mode=OneWay}" Tag="Technique:PullDrop"/>
++                <Slider Grid.Column="4" Classes="fader" Value="{Binding PullDrop, Mode=OneWay}"
++                  Minimum="1" Maximum="500" TickFrequency="1" IsSnapToTickEnabled="True" KeyUp="TechniqueSliderKeyUp" Tag="Technique:PullDrop"/>
++              </Grid>
++            </StackPanel>
++            <Grid ColumnDefinitions="143,*">
 +              <Label Content="オーバーシュート"/>
 +              <ToggleSwitch Grid.Column="1" IsChecked="{Binding OvershootEnabled, Mode=OneWay}"
 +                OnContent="{DynamicResource button.on}" OffContent="{DynamicResource button.off}"
@@ -334,7 +368,7 @@
              <ToggleSwitch IsChecked="{Binding VibratoEnable, Mode=OneWay}" OnContent="{DynamicResource button.on}" OffContent="{DynamicResource button.off}"
 --- /dev/null
 +++ b/OpenUtau.Core/Ustx/VocalTechniques.cs
-@@ -0,0 +1,195 @@
+@@ -0,0 +1,209 @@
 +using System;
 +using System.Collections.Generic;
 +using System.Linq;
@@ -348,11 +382,13 @@
 +        public bool scoop;
 +        public bool fall;
 +        public bool hammer;
++        public bool pull;
 +        public bool overshoot;
 +        public bool rise;
 +        public float scoopDepth = 150, scoopLength = 140, scoopCurve = 0;
 +        public float fallDepth = 200, fallLength = 180, fallCurve = 0;
 +        public float hammerDepth = 100, hammerLength = 180, hammerRise = 20;
++        public float pullDepth = 100, pullLength = 180, pullDrop = 20;
 +        public float overshootDepth = 35, overshootLength = 100, overshootCurve = 0;
 +        public float riseDepth = 100, riseLength = 120, riseCurve = 0;
 +
@@ -360,11 +396,12 @@
 +            original = original.Select(p => p.Clone()).ToList(),
 +            applied = applied.Select(p => p.Clone()).ToList(),
 +            originalSnapFirst = originalSnapFirst,
-+            scoop = scoop, fall = fall, hammer = hammer,
++            scoop = scoop, fall = fall, hammer = hammer, pull = pull,
 +            overshoot = overshoot, rise = rise,
 +            scoopDepth = scoopDepth, scoopLength = scoopLength, scoopCurve = scoopCurve,
 +            fallDepth = fallDepth, fallLength = fallLength, fallCurve = fallCurve,
 +            hammerDepth = hammerDepth, hammerLength = hammerLength, hammerRise = hammerRise,
++            pullDepth = pullDepth, pullLength = pullLength, pullDrop = pullDrop,
 +            overshootDepth = overshootDepth, overshootLength = overshootLength, overshootCurve = overshootCurve,
 +            riseDepth = riseDepth, riseLength = riseLength, riseCurve = riseCurve,
 +        };
@@ -379,7 +416,7 @@
 +                pair.First.shape == pair.Second.shape);
 +
 +        public static bool IsActive(UPitch pitch) => Matches(pitch) &&
-+            (pitch.techniques!.scoop || pitch.techniques.fall || pitch.techniques.hammer ||
++            (pitch.techniques!.scoop || pitch.techniques.fall || pitch.techniques.hammer || pitch.techniques.pull ||
 +                pitch.techniques.overshoot || pitch.techniques.rise);
 +
 +        public static bool IsEnabled(UPitch pitch, string name) {
@@ -388,6 +425,7 @@
 +                "scoop" => pitch.techniques!.scoop,
 +                "fall" => pitch.techniques!.fall,
 +                "hammer" => pitch.techniques!.hammer,
++                "pull" => pitch.techniques!.pull,
 +                "overshoot" => pitch.techniques!.overshoot,
 +                "rise" => pitch.techniques!.rise,
 +                _ => false,
@@ -400,6 +438,7 @@
 +                "ScoopDepth" => s.scoopDepth, "ScoopLength" => s.scoopLength, "ScoopCurve" => s.scoopCurve,
 +                "FallDepth" => s.fallDepth, "FallLength" => s.fallLength, "FallCurve" => s.fallCurve,
 +                "HammerDepth" => s.hammerDepth, "HammerLength" => s.hammerLength, "HammerRise" => s.hammerRise,
++                "PullDepth" => s.pullDepth, "PullLength" => s.pullLength, "PullDrop" => s.pullDrop,
 +                "OvershootDepth" => s.overshootDepth, "OvershootLength" => s.overshootLength, "OvershootCurve" => s.overshootCurve,
 +                "RiseDepth" => s.riseDepth, "RiseLength" => s.riseLength, "RiseCurve" => s.riseCurve,
 +                _ => throw new ArgumentException("Unknown parameter", nameof(key)),
@@ -408,7 +447,7 @@
 +
 +        public static UPitch Adjust(UPitch pitch, double durationMs, string key, float value) {
 +            string name = key.StartsWith("Scoop") ? "scoop" : key.StartsWith("Fall") ? "fall" :
-+                key.StartsWith("Hammer") ? "hammer" : key.StartsWith("Overshoot") ? "overshoot" :
++                key.StartsWith("Hammer") ? "hammer" : key.StartsWith("Pull") ? "pull" : key.StartsWith("Overshoot") ? "overshoot" :
 +                key.StartsWith("Rise") ? "rise" : throw new ArgumentException("Unknown parameter", nameof(key));
 +            if (!IsEnabled(pitch, name) || !float.IsFinite(value)) { return pitch.Clone(); }
 +            var copy = pitch.Clone();
@@ -426,6 +465,9 @@
 +                case "HammerDepth": s.hammerDepth = depth; break;
 +                case "HammerLength": s.hammerLength = length; break;
 +                case "HammerRise": s.hammerRise = Math.Clamp(value, 1, 500); break;
++                case "PullDepth": s.pullDepth = depth; break;
++                case "PullLength": s.pullLength = length; break;
++                case "PullDrop": s.pullDrop = Math.Clamp(value, 1, 500); break;
 +                case "OvershootDepth": s.overshootDepth = depth; break;
 +                case "OvershootLength": s.overshootLength = length; break;
 +                case "OvershootCurve": s.overshootCurve = curve; break;
@@ -438,7 +480,7 @@
 +        }
 +
 +        public static UPitch Set(UPitch pitch, double durationMs, string name, bool enabled) {
-+            if (name != "scoop" && name != "fall" && name != "hammer" && name != "overshoot" && name != "rise") {
++            if (name != "scoop" && name != "fall" && name != "hammer" && name != "pull" && name != "overshoot" && name != "rise") {
 +                throw new ArgumentException("Unknown vocal technique", nameof(name));
 +            }
 +            var state = Matches(pitch) ? pitch.techniques!.Clone() : new VocalTechniqueState {
@@ -446,13 +488,14 @@
 +                originalSnapFirst = pitch.snapFirst,
 +            };
 +            switch (name) {
-+                case "scoop": state.scoop = enabled; break;
++                case "scoop": state.scoop = enabled; if (enabled) { state.pull = false; } break;
 +                case "fall": state.fall = enabled; if (enabled) { state.rise = false; } break;
-+                case "hammer": state.hammer = enabled; break;
++                case "hammer": state.hammer = enabled; if (enabled) { state.pull = false; } break;
++                case "pull": state.pull = enabled; if (enabled) { state.scoop = state.hammer = false; } break;
 +                case "overshoot": state.overshoot = enabled; break;
 +                case "rise": state.rise = enabled; if (enabled) { state.fall = false; } break;
 +            }
-+            if (!state.scoop && !state.fall && !state.hammer && !state.overshoot && !state.rise) {
++            if (!state.scoop && !state.fall && !state.hammer && !state.pull && !state.overshoot && !state.rise) {
 +                state.applied = state.original.Select(p => p.Clone()).ToList();
 +                return new UPitch { data = state.original.Select(p => p.Clone()).ToList(),
 +                    snapFirst = state.originalSnapFirst, techniques = state };
@@ -467,27 +510,32 @@
 +                _ => PitchPointShape.io,
 +            };
 +            // Edit the native entry transition, preserving later hand-authored points.
-+            if (state.scoop || state.hammer) {
++            bool hasEntry = state.scoop || state.hammer || state.pull;
++            bool stepped = state.hammer || state.pull;
++            if (hasEntry) {
 +                float start = Math.Min(0, points[0].X);
 +                float end = Math.Min(duration * (state.overshoot ? .3f : .5f), start + Math.Max(1,
++                    state.pull ? state.pullLength + state.pullDrop :
 +                    state.hammer ? state.hammerLength + state.hammerRise : state.scoopLength));
 +                end = Math.Max(start + .1f, end);
 +                float target = points[1].Y;
-+                float depth = (state.scoop ? state.scoopDepth : 0) + (state.hammer ? state.hammerDepth : 0);
++                float depth = state.pull ? -state.pullDepth :
++                    (state.scoop ? state.scoopDepth : 0) + (state.hammer ? state.hammerDepth : 0);
 +                var entry = new List<PitchPoint>();
 +                entry.Add(new(start, points[0].Y, Shape(state.scoopCurve)));
 +                float dip = start + (end - start) * .4f;
-+                if (state.hammer) { dip = Math.Min(start + (end - start) * .2f, 0); }
++                if (stepped) { dip = Math.Min(start + (end - start) * .2f, 0); }
 +                dip = Math.Max(start + .001f, dip);
-+                entry.Add(new(dip, target - depth / 10, state.hammer ? PitchPointShape.l : Shape(state.scoopCurve)));
-+                if (state.hammer) {
-+                    float step = Math.Max(start + .01f, end - Math.Min(state.hammerRise, (end - start) * .5f));
-+                    entry.Add(new(step, target - state.hammerDepth / 10, PitchPointShape.l));
++                entry.Add(new(dip, target - depth / 10, stepped ? PitchPointShape.l : Shape(state.scoopCurve)));
++                if (stepped) {
++                    float transition = state.pull ? state.pullDrop : state.hammerRise;
++                    float step = Math.Max(start + .01f, end - Math.Min(transition, (end - start) * .5f));
++                    entry.Add(new(step, target + (state.pull ? state.pullDepth : -state.hammerDepth) / 10, PitchPointShape.l));
 +                }
 +                entry.Add(new(end, target, points[1].shape));
 +                points = entry.Concat(points.Skip(2).Where(p => p.X > end)).ToList();
 +            }
-+            float entryEnd = state.scoop || state.hammer ? points[state.hammer ? 3 : 2].X : 0;
++            float entryEnd = hasEntry ? points[stepped ? 3 : 2].X : 0;
 +            float At(List<PitchPoint> data, float x) {
 +                for (int i = 1; i < data.Count; i++) {
 +                    if (x <= data[i].X) {
@@ -498,12 +546,12 @@
 +                return data[^1].Y;
 +            }
 +            if (state.overshoot && points[0].X < duration * .5f - .001f) {
-+                float start = state.scoop || state.hammer ? entryEnd : Math.Max(0, Math.Min(points[1].X, duration * .3f));
++                float start = hasEntry ? entryEnd : Math.Max(0, Math.Min(points[1].X, duration * .3f));
 +                start = Math.Max(points[0].X, start);
 +                float end = Math.Min(duration * .5f, start + state.overshootLength);
 +                float peak = start + (end - start) * .4f;
 +                float baseline = At(points, start);
-+                float target = state.scoop || state.hammer ? baseline : points[1].Y;
++                float target = hasEntry ? baseline : points[1].Y;
 +                var before = points.Where(p => p.X < start).ToList();
 +                // Keep the snapped connection point even when the hump begins at zero.
 +                if (before.Count == 0) { before.Add(points[0].Clone()); start = points[0].X; }
@@ -532,7 +580,7 @@
 +}
 --- /dev/null
 +++ b/OpenUtau.Test/Core/Util/VocalTechniquesTest.cs
-@@ -0,0 +1,214 @@
+@@ -0,0 +1,273 @@
 +using System;
 +using System.Linq;
 +using OpenUtau.Core.Ustx;
@@ -552,6 +600,7 @@
 +        [InlineData("scoop")]
 +        [InlineData("fall")]
 +        [InlineData("hammer")]
++        [InlineData("pull")]
 +        [InlineData("overshoot")]
 +        [InlineData("rise")]
 +        public void ToggleRestoresOriginalAndPersists(string name) {
@@ -620,6 +669,9 @@
 +        [InlineData("hammer", "HammerDepth", 250)]
 +        [InlineData("hammer", "HammerLength", 300)]
 +        [InlineData("hammer", "HammerRise", 100)]
++        [InlineData("pull", "PullDepth", 250)]
++        [InlineData("pull", "PullLength", 300)]
++        [InlineData("pull", "PullDrop", 100)]
 +        [InlineData("overshoot", "OvershootDepth", 75)]
 +        [InlineData("overshoot", "OvershootLength", 150)]
 +        [InlineData("overshoot", "OvershootCurve", 2)]
@@ -672,6 +724,61 @@
 +        }
 +
 +        [Fact]
++        public void PullHoldsAboveTargetThenStepsDownWithoutChangingTheConnectionAnchor() {
++            var original = new UPitch { data = new() { new(0, 0), new(600, 0) } };
++            var pull = VocalTechniques.Set(original, 600, "pull", true);
++            Assert.True(VocalTechniques.IsActive(pull));
++            Assert.Equal(4, pull.data.Count);
++            Assert.Equal(0, pull.data[0].Y);
++            Assert.Equal(10, pull.data[1].Y);
++            Assert.Equal(10, pull.data[2].Y);
++            Assert.Equal(180, pull.data[2].X);
++            Assert.Equal(200, pull.data[3].X);
++            Assert.Equal(0, pull.data[3].Y);
++            Assert.Equal(PitchPointShape.l, pull.data[2].shape);
++            var connected = new UPitch { data = new() { new(-40, 10), new(40, 0), new(350, 3) } };
++            pull = VocalTechniques.Set(connected, 600, "pull", true);
++            Assert.Equal(10, pull.data[0].Y);
++            Assert.Equal(3, pull.data.Last().Y);
++            Equal(connected, VocalTechniques.Set(pull, 600, "pull", false));
++        }
++
++        [Theory]
++        [InlineData("scoop")]
++        [InlineData("hammer")]
++        public void OpposingEntryTechniquesSwitchWithoutLosingSettingsAndUndo(string name) {
++            var previous = VocalTechniques.Set(Original(), 600, name, true);
++            var pull = VocalTechniques.Set(previous, 600, "pull", true);
++            pull = VocalTechniques.Adjust(pull, 600, "PullDepth", 220);
++            Assert.False(VocalTechniques.IsEnabled(pull, name));
++            Assert.True(VocalTechniques.IsEnabled(pull, "pull"));
++            var back = VocalTechniques.Set(pull, 600, name, true);
++            Assert.False(VocalTechniques.IsEnabled(back, "pull"));
++            Equal(previous, back);
++            Assert.Equal(220, VocalTechniques.Parameter(back, "PullDepth"));
++            var note = UNote.Create(); note.pitch = pull;
++            var command = new SetPitchPointsCommand(new UVoicePart(), note, back);
++            command.Execute();
++            command.Unexecute();
++            Equal(pull, note.pitch);
++            Assert.True(VocalTechniques.IsEnabled(note.pitch, "pull"));
++            Assert.Equal(220, VocalTechniques.Parameter(note.pitch, "PullDepth"));
++        }
++
++        [Fact]
++        public void LegacyTechniqueStateLoadsWithPullDisabledAndIndependentDefaults() {
++            var legacy = Yaml.DefaultSerializer.Serialize(VocalTechniques.Set(Original(), 600, "hammer", true));
++            legacy = string.Join("\n", legacy.Split('\n').Where(line => !line.TrimStart().StartsWith("pull")));
++            var loaded = Yaml.DefaultDeserializer.Deserialize<UPitch>(legacy);
++            Assert.True(VocalTechniques.IsEnabled(loaded, "hammer"));
++            Assert.False(VocalTechniques.IsEnabled(loaded, "pull"));
++            Assert.Equal(100, VocalTechniques.Parameter(loaded, "PullDepth"));
++            var clone = loaded.Clone();
++            clone.techniques!.pullDepth = 999;
++            Assert.Equal(100, VocalTechniques.Parameter(loaded, "PullDepth"));
++        }
++
++        [Fact]
 +        public void OvershootReturnsToPitchAndHiccupRisesAtRelease() {
 +            var original = new UPitch { snapFirst = true, data = new() { new(-40, -20), new(40, 0) } };
 +            var overshoot = VocalTechniques.Set(original, 600, "overshoot", true);
@@ -704,8 +811,8 @@
 +        [Theory]
 +        [InlineData(1)] [InlineData(20)] [InlineData(200)] [InlineData(600)] [InlineData(60000)]
 +        public void AllCombinationsKeepFewOrderedPointsAndStableMiddle(double duration) {
-+            string[] names = { "scoop", "fall", "hammer", "overshoot", "rise" };
-+            for (int mask = 0; mask < 32; mask++) {
++            string[] names = { "scoop", "fall", "hammer", "overshoot", "rise", "pull" };
++            for (int mask = 0; mask < 64; mask++) {
 +                var original = new UPitch { snapFirst = true, data = new() { new(-40, -20), new(40, 0) } };
 +                var pitch = original.Clone();
 +                for (int i = 0; i < names.Length; i++) {
@@ -716,7 +823,7 @@
 +                Assert.True(pitch.data.Count <= 8);
 +                Assert.Equal(-20, pitch.data[0].Y);
 +                Assert.True(pitch.snapFirst);
-+                if (VocalTechniques.IsEnabled(pitch, "scoop") || VocalTechniques.IsEnabled(pitch, "hammer") || VocalTechniques.IsEnabled(pitch, "overshoot")) {
++                if (VocalTechniques.IsEnabled(pitch, "scoop") || VocalTechniques.IsEnabled(pitch, "hammer") || VocalTechniques.IsEnabled(pitch, "pull") || VocalTechniques.IsEnabled(pitch, "overshoot")) {
 +                    Assert.Contains(pitch.data, p => p.Y == 0 && p.X <= duration * .5 + .001);
 +                }
 +                if (VocalTechniques.IsEnabled(pitch, "fall") || VocalTechniques.IsEnabled(pitch, "rise")) {

@@ -113,3 +113,5 @@ python3 tests/test_macos_distribution.py dist/OpenUtau-Logic-AU-0.1.572.1-alpha-
 Releaseビルド成功。歌唱テクニック・直接歌詞入力・公式プリセット・DAW通信の136件と、実C++ブリッジでの通信/音声取得1件が合格。最初の実接続テストはホストの再生ループ指定不足で失敗し、`bridge-host --loop 4`へ修正後に成功。ネイティブ回帰テストの保存パネル100回と軸判別、AUの`auval`、配布ZIPの署名・隔離導入・再導入・データ保持・改ざん拒否も合格。実画面では起動、既存調整値の読込、Shift＋↑のD#4→D#5、Undo、保存、別名保存を確認しました。物理ピンチ、Logicでの楽曲再生、音質、別Mac実機は今回未再検証です。
 
 参照：[公式告知](https://x.com/StAkira/status/2112411669762822246)、[公式安定版](https://github.com/openutau/OpenUtau/releases/tag/0.1.576)、[旧ベースからの差分](https://github.com/openutau/OpenUtau/compare/0.1.572.1-alpha...0.1.576)。
+
+2026-10-21追記: 「歌唱テクニック」にプリングを追加。ONで下降する段差を作り、下げ幅・保持・下降時間を調整できます。USTXへの保存、OFFで元カーブ復元、⌘＋Zに対応します。
