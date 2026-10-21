@@ -1,0 +1,302 @@
+--- a/OpenUtau.Core/Ustx/UNote.cs
++++ b/OpenUtau.Core/Ustx/UNote.cs
+@@ -21,6 +21,7 @@
+         public UPitch pitch;
+         public UVibrato vibrato;
+         public int tuning;
++        public int noteGain = 100;
+         [YamlMember(Alias = "phonemizer", ApplyNamingConventions = false)]
+         public string? PhonemizerOverride { get; set; } = null;
+
+@@ -259,6 +260,7 @@
+                 pitch = pitch.Clone(),
+                 vibrato = vibrato.Clone(),
+                 tuning = tuning,
++                noteGain = noteGain,
+                 PhonemizerOverride = PhonemizerOverride,
+                 phonemeExpressions = phonemeExpressions.Select(exp => exp.Clone()).ToList(),
+                 phonemeOverrides = phonemeOverrides.Select(o => o.Clone()).ToList(),
+--- a/OpenUtau.Core/Pipeline/PhraseSource.cs
++++ b/OpenUtau.Core/Pipeline/PhraseSource.cs
+@@ -20,6 +20,7 @@
+         public readonly string Lyric;
+         public readonly int Tone;
+         public readonly int Tuning;
++        public readonly int NoteGain;
+         public readonly float AdjustedTone;
+         public readonly double DurationMs;
+         // Index into PhraseSource.Notes, or -1.
+@@ -40,6 +41,7 @@
+             Lyric = note.lyric;
+             Tone = note.tone;
+             Tuning = note.tuning;
++            NoteGain = Math.Clamp(note.noteGain, 0, 200);
+             AdjustedTone = note.AdjustedTone;
+             DurationMs = axis.MsBetweenTickPos(partPosition + note.position, partPosition + note.End);
+             Prev = prev;
+--- a/OpenUtau.Core/Render/RenderPhrase.cs
++++ b/OpenUtau.Core/Render/RenderPhrase.cs
+@@ -13,6 +13,7 @@
+         public readonly string lyric;
+         public readonly int tone;
+         public readonly int tuning;
++        public readonly float noteGain;
+         public readonly float adjustedTone;
+
+         public readonly int position;
+@@ -27,6 +28,7 @@
+             lyric = note.Lyric;
+             tone = note.Tone;
+             tuning = note.Tuning;
++            noteGain = note.NoteGain * 0.01f;
+             adjustedTone = note.AdjustedTone;
+
+             position = partPosition + note.Position - phrasePosition;
+@@ -567,6 +569,14 @@
+                         writer.Write(phone.hash);
+                     }
+                     if (postEffect) {
++                        if (notes.Any(n => n.noteGain != 1f)) {
++                            writer.Write("note-gain-v1");
++                            foreach (var note in notes) {
++                                writer.Write(note.positionMs);
++                                writer.Write(note.endMs);
++                                writer.Write(note.noteGain);
++                            }
++                        }
+                         foreach (var array in new float[][] { pitches, dynamics, gender, breathiness, toneShift, tension, voicing, xsy }) {
+                             if (array == null) {
+                                 writer.Write("null");
+--- a/OpenUtau.Core/Render/Renderers.cs
++++ b/OpenUtau.Core/Render/Renderers.cs
+@@ -100,6 +100,7 @@
+         }
+
+         public static void ApplyDynamics(RenderPhrase phrase, RenderResult result) {
++            ApplyNoteGain(phrase.notes, result);
+             const int interval = 5;
+             if (phrase.dynamics == null) {
+                 return;
+@@ -121,6 +122,40 @@
+             }
+         }
+
++        public static void ApplyNoteGain(RenderNote[] notes, RenderResult result) {
++            if (result.samples == null || notes.Length == 0 || notes.All(n => n.noteGain == 1f)) {
++                return;
++            }
++            var changes = new List<(double ms, float gain)>();
++            for (int i = 1; i < notes.Length; i++) {
++                if (notes[i].positionMs > notes[i - 1].endMs) {
++                    changes.Add((notes[i - 1].endMs, 1f));
++                }
++                changes.Add((notes[i].positionMs, notes[i].noteGain));
++            }
++            // Keep the first consonant and final release at their note's gain.
++            double startMs = result.positionMs - result.leadingMs;
++            float gain = notes[0].noteGain;
++            float target = gain;
++            int remaining = 0;
++            int next = 0;
++            for (int sample = 0; sample < result.samples.Length; sample++) {
++                double ms = startMs + sample / 44.1;
++                while (next < changes.Count && changes[next].ms <= ms) {
++                    target = changes[next++].gain;
++                    remaining = 220;
++                    if (ms - changes[next - 1].ms >= 5) {
++                        gain = target;
++                        remaining = 0;
++                    }
++                }
++                if (remaining > 0) {
++                    gain += (target - gain) / remaining--;
++                }
++                result.samples[sample] *= gain;
++            }
++        }
++
+         public static IReadOnlyList<IResampler> GetSupportedResamplers(IWavtool? wavtool) {
+             if (wavtool is SharpWavtool) {
+                 return ToolsManager.Inst.Resamplers;
+--- a/OpenUtau/Controls/NotePropertiesControl.axaml
++++ b/OpenUtau/Controls/NotePropertiesControl.axaml
+@@ -56,6 +56,12 @@
+               <TextBox Text="{Binding Tone, Mode=OneWay}" Grid.Column="1" Tag="Tone" Margin="0"/>
+             </Grid>
+             <Grid ColumnDefinitions="130,20,50,20,*">
++              <Label Content="音量（%）"/>
++              <TextBox Grid.Column="2" Text="{Binding NoteGain, Mode=OneWay}" Tag="NoteGain"/>
++              <Slider Grid.Column="4" Classes="fader" Value="{Binding NoteGain}" Minimum="0" Maximum="200"
++                      TickPlacement="BottomRight" TickFrequency="1" IsSnapToTickEnabled="true" Tag="NoteGain"/>
++            </Grid>
++            <Grid ColumnDefinitions="130,20,50,20,*">
+               <Label Content="{DynamicResource noteproperty.tuning}" FontWeight="{Binding TuningFontWeight}"/>
+               <TextBox Grid.Column="2" Text="{Binding Tuning, Mode=OneWay}" Tag="Tuning" Margin="0"/>
+               <Slider Grid.Column="4" Classes="fader" Value="{Binding Tuning}" Minimum="-100" Maximum="100"
+--- a/OpenUtau/ViewModels/NotePropertiesViewModel.cs
++++ b/OpenUtau/ViewModels/NotePropertiesViewModel.cs
+@@ -19,6 +19,7 @@
+         [Reactive] public partial string Lyric { get; set; } = string.Empty;
+         [Reactive] public partial string Tone { get; set; } = string.Empty;
+         [Reactive] public partial int Tuning { get; set; }
++        [Reactive] public partial int NoteGain { get; set; } = 100;
+         [Reactive] public partial FontWeight TuningFontWeight { get; set; } = FontWeight.Normal;
+         [Reactive] public partial float PortamentoLength { get; set; }
+         [Reactive] public partial float PortamentoStart { get; set; }
+@@ -266,6 +267,7 @@
+                 Lyric = note.lyric;
+                 Tone = MusicMath.GetToneName(note.tone);
+                 Tuning = note.tuning;
++                NoteGain = note.noteGain;
+                 SetTuningFontWeight();
+                 if (note.pitch.data.Count >= 2) {
+                     PortamentoLength = note.pitch.data.Last().X - note.pitch.data.First().X;
+@@ -288,6 +290,7 @@
+                 Lyric = string.Empty;
+                 Tone = string.Empty;
+                 Tuning = 0;
++                NoteGain = 100;
+                 PhonemizerOverride = "";
+                 SetTuningFontWeight();
+                 PortamentoLength = NotePresets.Default.DefaultPortamento.PortamentoLength;
+@@ -453,6 +456,9 @@
+                 } else if (cmd is MoveNoteCommand) {
+                     Tone = MusicMath.GetToneName(note.tone);
+                     this.RaisePropertyChanged(nameof(Tone));
++                } else if (cmd is NoteGainCommand) {
++                    NoteGain = note.noteGain;
++                    this.RaisePropertyChanged(nameof(NoteGain));
+                 } else if (cmd is ChangeNoteTuningCommand) {
+                     Tuning = note.tuning;
+                     SetTuningFontWeight();
+@@ -602,6 +608,11 @@
+                         Tone = note != null ? MusicMath.GetToneName(note.tone) : string.Empty;
+                         this.RaisePropertyChanged(nameof(Tone));
+                     }
++                } else if (tag == "NoteGain") {
++                    int value = obj == null ? 100 : (int)ParseValue(obj, tag, 0, 200, 100);
++                    if (selectedNotes.Any(n => n.noteGain != value)) {
++                        DocManager.Inst.ExecuteCmd(new NoteGainCommand(Part, selectedNotes, value));
++                    }
+                 } else if (tag == "Tuning") {
+                     int value;
+                     if (obj != null && (obj is int i || int.TryParse(obj.ToString(), out i)) && i >= -100 && i <= 100) {
+--- /dev/null
++++ b/OpenUtau.Core/Commands/NoteGainCommand.cs
+@@ -0,0 +1,28 @@
++using System;
++using System.Collections.Generic;
++using System.Linq;
++using OpenUtau.Core.Ustx;
++
++namespace OpenUtau.Core {
++    public class NoteGainCommand : NoteCommand {
++        readonly int[] oldValues;
++        readonly int value;
++
++        public NoteGainCommand(UVoicePart part, IEnumerable<UNote> notes, int value) : base(part, notes) {
++            oldValues = Notes.Select(n => n.noteGain).ToArray();
++            this.value = Math.Clamp(value, 0, 200);
++        }
++
++        public override string ToString() => "Set note volume";
++        public override void Execute() {
++            lock (Part) {
++                foreach (var note in Notes) { note.noteGain = value; }
++            }
++        }
++        public override void Unexecute() {
++            lock (Part) {
++                for (int i = 0; i < Notes.Length; i++) { Notes[i].noteGain = oldValues[i]; }
++            }
++        }
++    }
++}
+--- /dev/null
++++ b/OpenUtau.Test/Core/Pipeline/NoteGainTest.cs
+@@ -0,0 +1,85 @@
++using System;
++using System.Linq;
++using OpenUtau.Core.Render;
++using OpenUtau.Core.Ustx;
++using OpenUtau.Core.Util;
++using Xunit;
++
++namespace OpenUtau.Core.Pipeline {
++    public class NoteGainTest {
++        [Fact]
++        public void SaveCloneLegacyAndMultipleNoteUndo() {
++            var a = UNote.Create();
++            var b = UNote.Create();
++            a.noteGain = 35;
++            b.noteGain = 160;
++            var command = new NoteGainCommand(new UVoicePart(), new[] { a, b }, 75);
++            command.Execute();
++            Assert.Equal(75, a.noteGain);
++            Assert.Equal(75, b.noteGain);
++            command.Unexecute();
++            Assert.Equal(35, a.noteGain);
++            Assert.Equal(160, b.noteGain);
++            command.Execute();
++            Assert.Equal(75, a.Clone().noteGain);
++            var saved = Yaml.DefaultSerializer.Serialize(a);
++            Assert.Equal(75, Yaml.DefaultDeserializer.Deserialize<UNote>(saved).noteGain);
++            Assert.Equal(100, Yaml.DefaultDeserializer.Deserialize<UNote>("position: 0\nduration: 480\ntone: 60\nlyric: a\n").noteGain);
++        }
++
++        [Theory]
++        [InlineData(0)] [InlineData(50)] [InlineData(100)] [InlineData(200)]
++        public void RealPhrasesApplyGainAlongsideDynamics(int percent) {
++            var (project, track, part) = PhraseSourceHashTest.BuildFixture();
++            var baseline = RenderPhrase.FromPart(project, track, part)[0];
++            var note = part.notes.First();
++            note.noteGain = percent;
++            var changed = RenderPhrase.FromPart(project, track, part)[0];
++            var a = new RenderResult { positionMs = baseline.positionMs, leadingMs = baseline.leadingMs,
++                samples = Enumerable.Repeat(1f, 100000).ToArray() };
++            var b = new RenderResult { positionMs = changed.positionMs, leadingMs = changed.leadingMs,
++                samples = Enumerable.Repeat(1f, 100000).ToArray() };
++            Renderers.ApplyDynamics(baseline, a);
++            Renderers.ApplyDynamics(changed, b);
++            int sample = (int)((note.PositionMs + 100 - a.positionMs + a.leadingMs) * 44.1);
++            Assert.Equal(a.samples[sample] * percent / 100f, b.samples[sample], 5);
++            int next = (int)((part.notes.Skip(1).First().PositionMs + 100 - a.positionMs + a.leadingMs) * 44.1);
++            Assert.Equal(a.samples[next], b.samples[next], 5);
++            if (percent == 100) {
++                Assert.Equal(baseline.hash, changed.hash);
++                Assert.Equal(a.samples, b.samples);
++            } else {
++                Assert.NotEqual(baseline.hash, changed.hash);
++                Assert.Equal(baseline.preEffectHash, changed.preEffectHash);
++            }
++        }
++
++        [Fact]
++        public void BoundaryIsSmoothedAndExtensionHasIndependentGain() {
++            var (project, track, part) = PhraseSourceHashTest.BuildFixture();
++            part.curves.Clear();
++            var extended = part.notes.Last();
++            extended.noteGain = 0;
++            var phrase = RenderPhrase.FromPart(project, track, part).Last();
++            var result = new RenderResult { positionMs = phrase.positionMs, leadingMs = phrase.leadingMs,
++                samples = Enumerable.Repeat(1f, 100000).ToArray() };
++            Renderers.ApplyNoteGain(phrase.notes, result);
++            int boundary = (int)Math.Ceiling((extended.PositionMs - result.positionMs + result.leadingMs) * 44.1);
++            Assert.Equal(1f, result.samples[boundary - 1]);
++            Assert.InRange(result.samples[boundary], 0.99f, 1f);
++            Assert.InRange(result.samples[boundary + 110], 0.48f, 0.51f);
++            Assert.Equal(0f, result.samples[boundary + 220]);
++            Assert.All(result.samples, f => Assert.True(float.IsFinite(f)));
++        }
++
++        [Fact]
++        public void SnapshotFreezesGainAndClampsMalformedValue() {
++            var (project, track, part) = PhraseSourceHashTest.BuildFixture();
++            var note = part.notes.First();
++            note.noteGain = 500;
++            var snapshot = PhraseSource.FromPart(project, track, part, 1);
++            note.noteGain = 10;
++            Assert.Equal(200, snapshot.Notes[0].NoteGain);
++        }
++    }
++}

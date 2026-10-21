@@ -67,9 +67,17 @@ elif ! git -C "$source_dir" apply --reverse --check "$preview_patch" 2>/dev/null
     exit 1
 fi
 
+gain_patch="$repo/patches/openutau-note-gain-0.1.576.patch"
+if git -C "$source_dir" apply --check "$gain_patch" 2>/dev/null; then
+    git -C "$source_dir" apply "$gain_patch"
+elif ! git -C "$source_dir" apply --reverse --check "$gain_patch" 2>/dev/null; then
+    echo 'Source differs from the expected note gain patch state.' >&2
+    exit 1
+fi
+
 (
     cd "$source_dir"
-    "$dotnet" build OpenUtau -c Release -r osx-arm64 \
+    "$dotnet" build OpenUtau -c Release -r osx-arm64 -m:1 \
         -p:Version=0.1.576 -p:AssemblyVersion=0.1.576 -p:FileVersion=0.1.576 \
         -v:quiet
 )
