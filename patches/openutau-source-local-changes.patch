@@ -1,0 +1,283 @@
+diff --git a/OpenUtau.Core/DiffSinger/DiffSingerBasePhonemizer.cs b/OpenUtau.Core/DiffSinger/DiffSingerBasePhonemizer.cs
+index 0e7aadd..df4477a 100644
+--- a/OpenUtau.Core/DiffSinger/DiffSingerBasePhonemizer.cs
++++ b/OpenUtau.Core/DiffSinger/DiffSingerBasePhonemizer.cs
+@@ -36,6 +36,38 @@ public abstract class DiffSingerBasePhonemizer : MachineLearningPhonemizer
+         protected virtual string GetDictionaryName()=>"dsdict.yaml";
+         public virtual string GetLangCode()=>String.Empty;//The language code of the language the phonemizer is made for
+ 
++        public override void SetUp(Note[][] groups, UProject project, UTrack track) {
++            base.SetUp(groups, project, track);
++            for (int i = 1; i < groups.Length; i++) {
++                var previous = groups[i - 1][^1];
++                int gap = groups[i][0].position - previous.position - previous.duration;
++                if (gap > 0 && partResult.TryGetValue(groups[i][0].position, out var phones)) {
++                    double previousEndMs = timeAxis.TickPosToMsPos(previous.position + previous.duration);
++                    double previousStartMs = timeAxis.TickPosToMsPos(previous.position);
++                    double overlapMs = Math.Min(70, (previousEndMs - previousStartMs) * 0.3);
++                    int overlapTicks = previous.position + previous.duration
++                        - timeAxis.MsPosToTickPos(previousEndMs - overlapMs);
++                    ConstrainPhraseLeadToRest(phones, gap + Math.Max(0, overlapTicks));
++                }
++            }
++        }
++
++        internal static void ConstrainPhraseLeadToRest(List<Tuple<string, int>> phones, int gap) {
++            if (gap <= 0 || phones.Count == 0) return;
++            int lead = 0;
++            foreach (var phone in phones) lead = Math.Max(lead, -phone.Item2);
++            if (lead <= gap) return;
++            // Keep the vowel anchor and consonant order; only compress the lead
++            // that would otherwise reach too far into the previous note across a rest.
++            double scale = (double)gap / lead;
++            for (int i = 0; i < phones.Count; i++) {
++                if (phones[i].Item2 < 0) {
++                    phones[i] = Tuple.Create(phones[i].Item1,
++                        Math.Max(-gap, (int)Math.Floor(phones[i].Item2 * scale)));
++                }
++            }
++        }
++
+         private bool _singerLoaded;
+ 
+         public override void SetSinger(USinger singer) {
+diff --git a/OpenUtau/Controls/PianoRoll.axaml b/OpenUtau/Controls/PianoRoll.axaml
+index 7ed63f8..aef9d8e 100644
+--- a/OpenUtau/Controls/PianoRoll.axaml
++++ b/OpenUtau/Controls/PianoRoll.axaml
+@@ -179,7 +179,8 @@
+                      PointerMoved="NotesCanvasPointerMoved"
+                      PointerReleased="NotesCanvasPointerReleased"
+                      DoubleTapped="NotesCanvasDoubleTapped"
+-                     PointerWheelChanged="NotesCanvasPointerWheelChanged">
++                     PointerWheelChanged="NotesCanvasPointerWheelChanged"
++                     PointerTouchPadGestureMagnify="NotesCanvasTouchPadMagnify">
+         <c:NotesCanvas.ContextMenu>
+           <ContextMenu ItemsSource="{Binding NotesContextMenuItems}"
+                        Opening="NotesContextMenuOpening">
+diff --git a/OpenUtau/Controls/PianoRoll.axaml.cs b/OpenUtau/Controls/PianoRoll.axaml.cs
+index 9e0e115..de1562b 100644
+--- a/OpenUtau/Controls/PianoRoll.axaml.cs
++++ b/OpenUtau/Controls/PianoRoll.axaml.cs
+@@ -2,6 +2,7 @@
+ using System.Collections.Generic;
+ using System.ComponentModel;
+ using System.Linq;
++using System.Runtime.InteropServices;
+ using System.Threading;
+ using System.Threading.Tasks;
+ using Avalonia;
+@@ -61,8 +62,25 @@ public Thickness OffScreenMargin {
+             set => SetValue(OffScreenMarginProperty, value);
+         }
+ 
++        [DllImport("libOpenUtauPinchAxis.dylib")]
++        private static extern int ou_pinch_start();
++
++        [DllImport("libOpenUtauPinchAxis.dylib")]
++        private static extern int ou_pinch_axis();
++
++        private static bool pinchAxisAvailable;
++
+         public PianoRoll(PianoRollViewModel model) {
+             InitializeComponent();
++            if (OS.IsMacOS()) {
++                try {
++                    pinchAxisAvailable = ou_pinch_start() != 0;
++                } catch (DllNotFoundException) {
++                    pinchAxisAvailable = false;
++                } catch (EntryPointNotFoundException) {
++                    pinchAxisAvailable = false;
++                }
++            }
+             DataContext = ViewModel = model;
+             var smoothViewport = new SmoothViewport(this);
+             hScroll = smoothViewport.Scroll(HScrollBar);
+@@ -1133,6 +1151,27 @@ public void NotesCanvasDoubleTapped(object sender, TappedEventArgs args) {
+             }
+         }
+ 
++        public void NotesCanvasTouchPadMagnify(object sender, PointerDeltaEventArgs args) {
++            var control = (Control)sender;
++            var size = control.Bounds.Size;
++            if (size.Width <= 0 || size.Height <= 0 || args.Delta.Y == 0) {
++                return;
++            }
++            var point = args.GetPosition(control);
++            var position = new Point(
++                Math.Clamp(point.X / size.Width, 0, 1),
++                Math.Clamp(point.Y / size.Height, 0, 1));
++            var zoom = args.Delta.Y / 2;
++            int axis = pinchAxisAvailable ? ou_pinch_axis() : 0;
++            if (axis != 2) {
++                ViewModel.NotesViewModel.OnXZoomed(position, zoom);
++            }
++            if (axis != 1) {
++                ViewModel.NotesViewModel.OnYZoomed(position, zoom);
++            }
++            LyricBox?.EndEdit();
++            args.Handled = true;
++        }
+         public void NotesCanvasPointerWheelChanged(object sender, PointerWheelEventArgs args) {
+             LyricBox?.EndEdit();
+             var control = (Control)sender;
+diff --git a/OpenUtau/ViewModels/DawIntegrationViewModel.cs b/OpenUtau/ViewModels/DawIntegrationViewModel.cs
+index e44bbcc..c41a1e0 100644
+--- a/OpenUtau/ViewModels/DawIntegrationViewModel.cs
++++ b/OpenUtau/ViewModels/DawIntegrationViewModel.cs
+@@ -78,13 +78,16 @@ public partial class DawIntegrationViewModel : ViewModelBase, IDisposable {
+         [Reactive] public partial int ConnectedCount { get; set; }
+         [Reactive] public partial bool Vst3Installed { get; set; }
+         [Reactive] public partial bool ClapInstalled { get; set; }
++        [Reactive] public partial bool AuInstalled { get; set; }
+         [Reactive] public partial string InstallStatus { get; set; } = string.Empty;
+         /// <summary>Whether the floating how-to-use card is shown over the dialog.</summary>
+         [Reactive] public partial bool IsGuideOpen { get; set; }
+ 
+         /// <summary>Whether any bridge format is installed. The floating guide only auto-opens
+         /// while this is false — an installed setup needs "load it in your DAW", not a tour.</summary>
+-        public bool InstallDetected => Vst3Installed || ClapInstalled;
++        public bool InstallDetected => AuInstalled || Vst3Installed || ClapInstalled;
++
++        public string AuStateText => AuInstalled ? "Logic用AU：インストール済み" : "Logic用AU：未インストール。配布のセットアップ.appを開いてください。";
+ 
+         /// <summary>Manual-download link label with this machine's OS name, e.g. "Windows".</summary>
+         public string GuideDownloadText => string.Format(
+@@ -126,6 +129,12 @@ public partial class DawIntegrationViewModel : ViewModelBase, IDisposable {
+ 
+         /// <summary>Re-probes the standard plugin folders. Cheap; safe to call often.</summary>
+         void RefreshInstallState() {
++            AuInstalled = OS.IsMacOS() && (System.IO.Directory.Exists(System.IO.Path.Combine(
++                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
++                "Library/Audio/Plug-Ins/Components/OpenUtau Bridge.component")) ||
++                System.IO.Directory.Exists("/Library/Audio/Plug-Ins/Components/OpenUtau Bridge.component"));
++            this.RaisePropertyChanged(nameof(AuStateText));
++            this.RaisePropertyChanged(nameof(InstallDetected));
+             Vst3Installed = DawBridgeInstaller.FindInstalled(DawBridgeFormat.Vst3) != null;
+             ClapInstalled = DawBridgeInstaller.FindInstalled(DawBridgeFormat.Clap) != null;
+             this.RaisePropertyChanged(nameof(Vst3StateText));
+@@ -225,7 +234,9 @@ public async Task RefreshAsync() {
+             if (Servers.Count == 0 && ConnectedCount == 0) {
+                 // Different guidance depending on whether the plugin is installed at all:
+                 // an installed-but-not-running setup needs "load it in your DAW", not "install it".
+-                Status = ThemeManager.GetString(Vst3Installed || ClapInstalled
++                Status = AuInstalled
++                    ? "Logicのソフトウェア音源トラックにOpenUtau Bridgeを入れてから、Refreshを押してください。"
++                    : ThemeManager.GetString(Vst3Installed || ClapInstalled
+                     ? "dawintegration.none.installed"
+                     : "dawintegration.none");
+             }
+diff --git a/OpenUtau/Views/DawIntegrationDialog.axaml b/OpenUtau/Views/DawIntegrationDialog.axaml
+index 07c803d..e612dd2 100644
+--- a/OpenUtau/Views/DawIntegrationDialog.axaml
++++ b/OpenUtau/Views/DawIntegrationDialog.axaml
+@@ -66,89 +66,11 @@
+                     Background="Transparent" BorderThickness="0"
+                     Click="OnCloseGuide"/>
+           </Grid>
+-          <ScrollViewer Grid.Row="1" Margin="0,6,0,0"
+-                        HorizontalScrollBarVisibility="Disabled">
+-            <StackPanel Spacing="6">
+-              <TextBlock Text="{DynamicResource dawintegration.guide.what}" TextWrapping="Wrap"/>
+-
+-              <TextBlock FontWeight="Bold" Margin="0,4,0,0"
+-                         Text="{DynamicResource dawintegration.guide.install.header}"/>
+-              <StackPanel Orientation="Horizontal" Spacing="16">
+-                <StackPanel Orientation="Horizontal" Spacing="4">
+-                  <TextBlock Text="VST3:"/>
+-                  <TextBlock Text="{Binding Vst3StateText}"/>
+-                </StackPanel>
+-                <StackPanel Orientation="Horizontal" Spacing="4">
+-                  <TextBlock Text="CLAP:"/>
+-                  <TextBlock Text="{Binding ClapStateText}"/>
+-                </StackPanel>
+-              </StackPanel>
+-                  <StackPanel Orientation="Horizontal" Spacing="8">
+-                    <Button Content="{Binding Vst3ButtonText}"
+-                            Click="OnInstallVst3" IsEnabled="{Binding Vst3InstallEnabled}"/>
+-                    <Button Content="{Binding ClapButtonText}"
+-                            Click="OnInstallClap" IsEnabled="{Binding ClapInstallEnabled}"/>
+-                  </StackPanel>
+-              <TextBlock Text="{Binding InstallStatus}" TextWrapping="Wrap"/>
+-
+-              <TextBlock FontWeight="Bold" Margin="0,4,0,0"
+-                         Text="{DynamicResource dawintegration.guide.caps.header}"/>
+-              <Grid ColumnDefinitions="Auto,*">
+-                <TextBlock Text="•" Margin="0,0,6,0"/>
+-                <TextBlock Grid.Column="1" TextWrapping="Wrap"
+-                           Text="{DynamicResource dawintegration.guide.caps.1}"/>
+-              </Grid>
+-              <Grid ColumnDefinitions="Auto,*">
+-                <TextBlock Text="•" Margin="0,0,6,0"/>
+-                <TextBlock Grid.Column="1" TextWrapping="Wrap"
+-                           Text="{DynamicResource dawintegration.guide.caps.2}"/>
+-              </Grid>
+-              <Grid ColumnDefinitions="Auto,*">
+-                <TextBlock Text="•" Margin="0,0,6,0"/>
+-                <TextBlock Grid.Column="1" TextWrapping="Wrap"
+-                           Text="{DynamicResource dawintegration.guide.caps.3}"/>
+-              </Grid>
+-              <Grid ColumnDefinitions="Auto,*">
+-                <TextBlock Text="•" Margin="0,0,6,0"/>
+-                <TextBlock Grid.Column="1" TextWrapping="Wrap"
+-                           Text="{DynamicResource dawintegration.guide.caps.4}"/>
+-              </Grid>
+-
+-              <TextBlock FontWeight="Bold" Margin="0,4,0,0"
+-                         Text="{DynamicResource dawintegration.guide.scope.header}"/>
+-              <Grid ColumnDefinitions="Auto,*">
+-                <TextBlock Text="•" Margin="0,0,6,0"/>
+-                <TextBlock Grid.Column="1" TextWrapping="Wrap"
+-                           Text="{DynamicResource dawintegration.guide.scope.1}"/>
+-              </Grid>
+-              <Grid ColumnDefinitions="Auto,*">
+-                <TextBlock Text="•" Margin="0,0,6,0"/>
+-                <TextBlock Grid.Column="1" TextWrapping="Wrap"
+-                           Text="{DynamicResource dawintegration.guide.scope.2}"/>
+-              </Grid>
+-              <Grid ColumnDefinitions="Auto,*">
+-                <TextBlock Text="•" Margin="0,0,6,0"/>
+-                <TextBlock Grid.Column="1" TextWrapping="Wrap"
+-                           Text="{DynamicResource dawintegration.guide.scope.3}"/>
+-              </Grid>
+-
+-              <TextBlock FontWeight="Bold" Margin="0,4,0,0"
+-                         Text="{DynamicResource dawintegration.guide.steps.header}"/>
+-              <TextBlock TextWrapping="Wrap" Text="{DynamicResource dawintegration.guide.step1}"/>
+-              <TextBlock TextWrapping="Wrap" Margin="12,0,0,0"
+-                         FontFamily="Consolas, Menlo, monospace"
+-                         Text="{Binding GuideInstallPaths}"/>
+-              <TextBlock TextWrapping="Wrap" Text="{DynamicResource dawintegration.guide.step2}"/>
+-              <TextBlock TextWrapping="Wrap" Text="{DynamicResource dawintegration.guide.step3}"/>
+-
+-              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+-                <Button Content="{DynamicResource dawintegration.guide.manual}" Click="OnGuideManual"/>
+-                <Button Content="{DynamicResource dawintegration.guide.manual.zh}" Click="OnGuideManualZh"/>
+-                <Button Content="{DynamicResource dawintegration.guide.releases}" Click="OnGuideReleases"/>
+-                <Button Content="{Binding GuideDownloadText}" Click="OnGuideDownload"/>
+-              </StackPanel>
+-            </StackPanel>
+-          </ScrollViewer>
++          <StackPanel Grid.Row="1" Margin="0,12,0,0" Spacing="12">
++            <TextBlock Text="{Binding AuStateText}" TextWrapping="Wrap"/>
++            <TextBlock Text="Logicのソフトウェア音源トラックで、AU音源 → OpenUtau Bridge → ステレオを選びます。" TextWrapping="Wrap"/>
++            <TextBlock Text="この画面のRefreshでOpenUtau Bridge Relayを選び、Connectを押してください。LogicとOpenUtauのテンポを合わせてからLogicで再生します。" TextWrapping="Wrap"/>
++          </StackPanel>
+         </Grid>
+       </Border>
+     </Grid>
+diff --git a/OpenUtau/Views/UpdaterDialog.axaml.cs b/OpenUtau/Views/UpdaterDialog.axaml.cs
+index 92736b2..070bc95 100644
+--- a/OpenUtau/Views/UpdaterDialog.axaml.cs
++++ b/OpenUtau/Views/UpdaterDialog.axaml.cs
+@@ -19,8 +19,8 @@ void OnClosing(object sender, WindowClosingEventArgs e) {
+             ViewModel.OnClosing();
+         }
+ 
+-        /// <summary>Whether CheckForUpdate runs. UI tests turn it off to stay offline.</summary>
+-        public static bool CheckForUpdateEnabled { get; set; } = true;
++        // The AU app is updated through its bridge distribution.
++        public static bool CheckForUpdateEnabled { get; set; } = false;
+ 
+         public static void CheckForUpdate(Action<Window> showDialog, Action closeApplication, TaskScheduler scheduler) {
+             if (!CheckForUpdateEnabled) {
