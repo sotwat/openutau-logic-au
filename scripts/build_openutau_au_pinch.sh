@@ -20,7 +20,8 @@ test "$(git -C "$source_dir" rev-parse HEAD)" = bc194b6fe4897427a73066390b286e11
 test ! -e "$output_app" || { echo "Output already exists: $output_app" >&2; exit 1; }
 official_hash=$(shasum -a 256 "$official_app/Contents/MacOS/OpenUtau.dll" | awk '{print $1}')
 test "$official_hash" = fd81ab35c3691715da0feaa8308dd534552df79e1e48ed012a95ea5add644855 || \
-test "$official_hash" = d6c8e36f176d62e075d4d70e88607f5611e82220329382567d9fe2ef793324a4 || {
+test "$official_hash" = d6c8e36f176d62e075d4d70e88607f5611e82220329382567d9fe2ef793324a4 || \
+test "$official_hash" = 721d280152da239995f4b5fcee4f734ae7ab31de2c4c358d8d5e3dfcf0c8a147 || {
     echo 'Expected official or current OpenUtau AU 0.1.576 app.' >&2
     exit 1
 }
@@ -94,16 +95,14 @@ fi
 
 (
     cd "$source_dir"
-    "$dotnet" build OpenUtau -c Release -r osx-arm64 -m:1 \
+    "$dotnet" publish OpenUtau -c Release -r osx-arm64 --self-contained true -m:1 \
         -p:Version=0.1.576 -p:AssemblyVersion=0.1.576 -p:FileVersion=0.1.576 \
         -v:quiet
 )
 
 ditto "$official_app" "$output_app"
-ditto "$source_dir/OpenUtau/bin/Release/net10.0/osx-arm64/OpenUtau.dll" \
-    "$output_app/Contents/MacOS/OpenUtau.dll"
-ditto "$source_dir/OpenUtau/bin/Release/net10.0/osx-arm64/OpenUtau.Core.dll" \
-    "$output_app/Contents/MacOS/OpenUtau.Core.dll"
+ditto "$source_dir/OpenUtau/bin/Release/net10.0/osx-arm64/publish/." \
+    "$output_app/Contents/MacOS/"
 clang -dynamiclib -fobjc-arc -fblocks -framework AppKit -arch arm64 \
     ${OPENUTAU_PINCH_DEBUG:+-DOPENUTAU_PINCH_DEBUG} \
     "$repo/native/openutau_pinch_axis.m" \
