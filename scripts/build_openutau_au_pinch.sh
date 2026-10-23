@@ -8,15 +8,20 @@ output_app=${OPENUTAU_PINCH_APP:?Set OPENUTAU_PINCH_APP to a new .app path.}
 dotnet=${DOTNET:-dotnet}
 patch="$repo/patches/openutau-piano-roll-pinch-0.1.576.patch"
 
+if [[ ! -d "$official_app" && -d "/Applications/OpenUtau AU.app" ]]; then
+    official_app="/Applications/OpenUtau AU.app"
+fi
+
 test "$(uname -m)" = arm64 || { echo 'Build on Apple Silicon.' >&2; exit 1; }
 test "$(git -C "$source_dir" rev-parse HEAD)" = bc194b6fe4897427a73066390b286e11205fd10f || {
     echo 'Expected official OpenUtau 0.1.576 source.' >&2
     exit 1
 }
 test ! -e "$output_app" || { echo "Output already exists: $output_app" >&2; exit 1; }
-test "$(shasum -a 256 "$official_app/Contents/MacOS/OpenUtau.dll" | awk '{print $1}')" = \
-    fd81ab35c3691715da0feaa8308dd534552df79e1e48ed012a95ea5add644855 || {
-    echo 'Expected unmodified official OpenUtau 0.1.576 app.' >&2
+official_hash=$(shasum -a 256 "$official_app/Contents/MacOS/OpenUtau.dll" | awk '{print $1}')
+test "$official_hash" = fd81ab35c3691715da0feaa8308dd534552df79e1e48ed012a95ea5add644855 || \
+test "$official_hash" = d6c8e36f176d62e075d4d70e88607f5611e82220329382567d9fe2ef793324a4 || {
+    echo 'Expected official or current OpenUtau AU 0.1.576 app.' >&2
     exit 1
 }
 
@@ -72,6 +77,18 @@ if git -C "$source_dir" apply --check "$gain_patch" 2>/dev/null; then
     git -C "$source_dir" apply "$gain_patch"
 elif ! git -C "$source_dir" apply --reverse --check "$gain_patch" 2>/dev/null; then
     echo 'Source differs from the expected note gain patch state.' >&2
+    exit 1
+fi
+
+# Keep the bundled XML signature implementation on the fixed NuGet line.
+# The official 0.1.576 source resolves 10.0.11, which is affected by the
+# current NuGet advisories; apply this reproducible build-time override after
+# the feature patches and before restore/build.
+core_project="$source_dir/OpenUtau.Core/OpenUtau.Core.csproj"
+if grep -q 'System.Security.Cryptography.Xml" Version="10.0.11"' "$core_project"; then
+    sed -i '' 's/System.Security.Cryptography.Xml" Version="10.0.11"/System.Security.Cryptography.Xml" Version="10.0.13"/' "$core_project"
+elif ! grep -q 'System.Security.Cryptography.Xml" Version="10.0.13"' "$core_project"; then
+    echo 'OpenUtau.Core.csproj has an unexpected System.Security.Cryptography.Xml version.' >&2
     exit 1
 fi
 
