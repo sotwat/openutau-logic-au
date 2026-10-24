@@ -4,6 +4,8 @@ ZIPを展開して「セットアップ.app」を開くと、インストール�
 
 OpenUtau AU、OpenUtau BridgeのAU音源、中継を配置し、AUの登録・検証と中継の起動まで自動で行います。「セットアップ完了」が表示されたら導入完了です。既存ファイルはユーザーのApplications内のOpenUtau Bridge Backupsに保存します。歌声ライブラリや譜面は含みません。
 
+インストールしたアプリは `~/Applications/OpenUtau AU.app`（Finderの「移動 → ホーム → アプリケーション」）にあります。
+
 ## Logicで使う
 
 Logicが起動中なら、プロジェクトを保存して再起動してください。ソフトウェア音源トラックの音源スロットで「AU音源 → OpenUtau Bridge → OpenUtau Bridge → ステレオ」を選びます。
@@ -20,7 +22,19 @@ Apple Silicon Mac・Logic Pro向けです。Logic Proは別途必要です。イ
 
 ## 収録内容とライセンス
 
-OpenUtau 0.1.576にピンチ拡大縮小とLogic向け案内を追加しています。起動時の更新通知は無効です。OpenUtauはMIT（OPENUTAU_LICENSE.txt）、ブリッジと配布コードはMPL-2.0（BRIDGE_LICENSE.txt）です。
+この配布は `0.1.576-one-click.2`、OpenUtau公式0.1.576をベースにした改造版です。起動時の公式更新通知は無効です。
+
+- Logic用AUとローカル中継、縦横を分けるピンチ拡大縮小
+- Shift＋上下のオクターブ移動、Backspaceでパート削除、Command＋Returnで0秒へ移動
+- ノートへのひらがな直接入力と後続ノートへの分配（「きゃ」等は1ノート、余りは切り捨て）
+- しゃくり・フォール・ハンマリング・プリング・オーバーシュート・ヒーカップのON/OFFと調整
+- 鍵盤・ドラッグ・矢印キー移調時のガイド音（Yで切り替え）
+- 「音符のプロパティ → 基本 → 音量（%）」でノート音量を0–200%に調整。DiffSingerにも対応
+- 「ファイル → プロジェクトファイルをエクスポート → べた打ちUSTをエクスポート...」で調声を外したUSTを出力。元のUSTXは変更しません
+
+USTは独自の音量設定などを保持しないため、編集原稿はUSTXで保存してください。べた打ちUSTの書き出し処理は自動テスト済みですが、実メニューから保存する一連の操作は未確認です。
+
+同梱.NET runtimeとXML/Pkcsライブラリは10.0.13です。OpenUtauはMIT（OPENUTAU_LICENSE.txt）、ブリッジと配布コードはMPL-2.0（BRIDGE_LICENSE.txt）です。
 
 ソース：https://github.com/sotwat/openutau-logic-au
 

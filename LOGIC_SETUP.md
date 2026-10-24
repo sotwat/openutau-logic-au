@@ -6,18 +6,18 @@
 
 「ファイル → プロジェクトファイルをエクスポート → べた打ちUSTをエクスポート...」で保存先を指定します。各歌唱パートをUSTとして出力し、音程・長さ・歌詞・休符・テンポを残します。ピッチカーブ・ビブラート・音量などの調声は出力に含めず、Velocity/Intensityは100、Modulationは0にします。元のUSTXと通常のUST書き出しは変更しません。音源が未選択でも書き出せます。
 
-この機能はこのMacの改造版向けで、既存公開ZIP one-click.1には含まれません。新規テスト2件と既存USTテスト3件、Release publish、導入後の起動・署名を確認済みです。実メニューから保存する一連の操作は、自動操作時にサブメニューが閉じるため未確認です。再現用パッチは `patches/openutau-untuned-ust-0.1.576.patch`、検証は `UntunedUstExportTest`。UST自体の制約（重なった音符、音符途中のテンポ変更、独自パラメーター等）は従来のUST出力と同じです。編集原稿はUSTXで保存してください。
+配布ZIP one-click.2にこの機能を収録しています。新規テスト2件と既存USTテスト3件、Release publish、導入後の起動・署名を確認済みです。実メニューから保存する一連の操作は、自動操作時にサブメニューが閉じるため未確認です。再現用パッチは `patches/openutau-untuned-ust-0.1.576.patch`、検証は `UntunedUstExportTest`。UST自体の制約（重なった音符、音符途中のテンポ変更、独自パラメーター等）は従来のUST出力と同じです。編集原稿はUSTXで保存してください。
 
 ## このMacでの配置
 
-- OpenUtau: このMacには `/Applications/OpenUtau AU.app` を導入しています。公式版アプリは本人指定で削除済みです。AU版は公式v0.1.576を元にピアノロールのトラックパッド・ピンチ拡大縮小を追加した改造版です。指を横に広げると時間軸、縦に広げると音程軸を拡大します。タッチ位置が取得できない場合は両軸を拡大します。Logic連携とピンチ操作には後者を使います。共通設定は`Channel=alpha`、旧設定の`Beta=false`です。
+- OpenUtau: このMacには `/Applications/OpenUtau AU.app` を導入しています。公式版アプリは本人指定で削除済みです。AU版は公式v0.1.576を元にピアノロールのトラックパッド・ピンチ拡大縮小を追加した改造版です。指を横に広げると時間軸、縦に広げると音程軸を拡大します。タッチ位置が取得できない場合は両軸を拡大します。Logic連携とピンチ操作にはOpenUtau AUを使います。共通設定は`Channel=alpha`、旧設定の`Beta=false`です。
 - AU音源: `~/Library/Audio/Plug-Ins/Components/OpenUtau Bridge.component`。
 - ローカル中継: `~/Library/Application Support/OpenUtau Bridge/openutau-bridge-relay`。ログイン時に起動するLaunchAgentは`~/Library/LaunchAgents/moe.kakaru.openutau-bridge-relay.plist`です。
 - ビルド元: このフォルダ。AU対応と中継のソースは`CMakeLists.txt`、`src/`、`scripts/`にあります。
 
 ## 別のApple Silicon Macへの導入
 
-[GitHubの公開リリース](https://github.com/sotwat/openutau-logic-au/releases)から最新版の配布ZIP `OpenUtau-Logic-AU-0.1.576-one-click.1-macos-arm64.zip` を取得し、展開して「セットアップ.app」を開きます。ターミナル操作は不要です。AUの登録・検証、中継の起動まで自動で行い、成功を確認できた場合だけ完了を表示します。ピンチ対応OpenUtau AU、AU音源、中継がユーザー領域に入り、既存ファイルはバックアップされます。詳しい条件と署名に関する注意はZIP内の`README.md`を参照してください。Intel Mac向けではありません。
+[GitHubの公開リリース](https://github.com/sotwat/openutau-logic-au/releases)から最新版の配布ZIP `OpenUtau-Logic-AU-0.1.576-one-click.2-macos-arm64.zip` を取得し、展開して「セットアップ.app」を開きます。ターミナル操作は不要です。AUの登録・検証、中継の起動まで自動で行い、成功を確認できた場合だけ完了を表示します。ピンチ対応OpenUtau AU、AU音源、中継がユーザー領域に入り、既存ファイルはバックアップされます。詳しい条件と署名に関する注意はZIP内の`README.md`を参照してください。Intel Mac向けではありません。
 
 ソースから配布ZIPを作り直すときは、公式OpenUtau `0.1.576`のソースとarm64版アプリを用意し、`scripts/build_openutau_au_pinch.sh`でピンチ対応アプリを生成します。`OPENUTAU_SOURCE`には公式タグのチェックアウト、`OPENUTAU_PINCH_APP`には新規出力先、`DOTNET`には.NET 10 SDKを指定します。検証済みアプリを`/Applications/OpenUtau AU.app`に置き、`sh distribution/build_macos_arm64.sh`を実行します。後者は実行ファイル・`OpenUtau.dll`・`OpenUtau.Core.dll`・ピンチ補助ライブラリのSHA-256を照合してからAUと中継をビルドし、`dist/`にZIPを作ります。声ライブラリや譜面は含めません。
 
@@ -71,7 +71,7 @@ AUv2のビルドには`clap-wrapper`がAppleのAudioUnitSDKを取得します。
 
 DiffSingerを含む各レンダラーの合成後の音声へ適用します。既存のDYN・ビブラートの音量連動・トラック音量と掛け合わせます。従来の音素VOLとは別のノート単位の設定で、伸ばし音符も独立して調整できます。境界の切り替えは約5msで補間します。USTXへ保存され、設定のない旧譜面は100%になります。USTへの書き出しでは独自設定を保持しません。
 
-再現用パッチは`patches/openutau-note-gain-0.1.576.patch`です。`scripts/build_openutau_au_pinch.sh`で既存パッチの後に適用します。`NoteGainTest`と`PhraseSourceHashTest`計8件で、波形倍率・DYNとの併用・境界補間・伸ばし音符・保存/旧譜面・複数選択Undo・スナップショット・キャッシュ識別を検証しています。実アプリでも花園トキネDSでの合成/再生、50%の数値入力、隣のノート100%維持、スライダー124%→Undo100%、保存結果を確認しました。音質の試聴評価と今回のLogic連携は未検証です。現Macへ導入済みですが、公開済みZIPにはまだ含まれません。
+再現用パッチは`patches/openutau-note-gain-0.1.576.patch`です。`scripts/build_openutau_au_pinch.sh`で既存パッチの後に適用します。`NoteGainTest`と`PhraseSourceHashTest`計8件で、波形倍率・DYNとの併用・境界補間・伸ばし音符・保存/旧譜面・複数選択Undo・スナップショット・キャッシュ識別を検証しています。実アプリでも花園トキネDSでの合成/再生、50%の数値入力、隣のノート100%維持、スライダー124%→Undo100%、保存結果を確認しました。音質の試聴評価と今回のLogic連携は未検証です。現Macへ導入済みで、配布ZIP one-click.2にも収録しています。
 
 ## キーボード操作の追加（2026-10-09）
 
