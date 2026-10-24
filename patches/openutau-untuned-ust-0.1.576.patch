@@ -1,0 +1,161 @@
+--- a/OpenUtau.Core/Classic/Ust.cs
++++ b/OpenUtau.Core/Classic/Ust.cs
+@@ -282,9 +282,9 @@
+             return float.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+         }
+
+-        public static void SavePart(UProject project, UVoicePart part, string filePath) {
++        public static void SavePart(UProject project, UVoicePart part, string filePath, bool untuned = false) {
+             var track = project.tracks[part.trackNo];
+-            var ustNotes = NotesToUstNotes(project, track, part, part.notes);
++            var ustNotes = NotesToUstNotes(project, track, part, part.notes, untuned);
+             using (var writer = new StreamWriter(filePath, false, ShiftJIS)) {
+                 WriteHeader(project, part, writer);
+                 for (var i = 0; i < ustNotes.Count; i++) {
+@@ -295,7 +295,7 @@
+             }
+         }
+
+-        static List<UstNote> NotesToUstNotes(UProject project, UTrack track, UVoicePart part, IEnumerable<UNote> notes) {
++        static List<UstNote> NotesToUstNotes(UProject project, UTrack track, UVoicePart part, IEnumerable<UNote> notes, bool untuned = false) {
+             var ustNotes = new List<UstNote>();
+             var position = 0;
+             foreach (var note in notes) {
+@@ -310,7 +310,15 @@
+                         noteNum = 60,
+                     });
+                 }
+-                ustNotes.Add(new UstNote(project, track, part, note));
++                ustNotes.Add(untuned ? new UstNote {
++                    lyric = note.lyric,
++                    position = note.position,
++                    duration = note.duration,
++                    noteNum = note.tone,
++                    velocity = 100,
++                    intensity = 100,
++                    modulation = 0,
++                } : new UstNote(project, track, part, note));
+                 position = note.End;
+             }
+             // Insert tempo changes.
+--- /dev/null
++++ b/OpenUtau.Test/Classic/UntunedUstExportTest.cs
+@@ -0,0 +1,60 @@
++using System;
++using System.IO;
++using System.Linq;
++using System.Text;
++using OpenUtau.Core;
++using OpenUtau.Core.Pipeline;
++using OpenUtau.Core.Ustx;
++using OpenUtau.Core.Util;
++using Xunit;
++
++namespace OpenUtau.Classic {
++    public class UntunedUstExportTest {
++        [Theory]
++        [InlineData(false)]
++        [InlineData(true)]
++        public void ExportKeepsScoreAndDoesNotChangeTuning(bool withoutSinger) {
++            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
++            var (project, track, part) = PhraseSourceHashTest.BuildFixture();
++            if (withoutSinger) {
++                track.Singer = null;
++                part.phonemes.Clear();
++            }
++            var first = part.notes.First();
++            first.lyric = "きゃ";
++            first.vibrato.length = 65;
++            first.noteGain = 35;
++            project.tempos.Add(new UTempo(part.notes.Last().position, 150));
++            project.timeAxis.BuildSegments(project);
++            var original = Yaml.DefaultSerializer.Serialize(part);
++            var path = Path.Combine(Path.GetTempPath(), $"openutau-flat-{Guid.NewGuid()}.ust");
++            try {
++                Ust.SavePart(project, part, path, untuned: true);
++                var text = File.ReadAllText(path, Encoding.GetEncoding("shift_jis"));
++                Assert.DoesNotContain("PBS=", text);
++                Assert.DoesNotContain("PBW=", text);
++                Assert.DoesNotContain("PBY=", text);
++                Assert.DoesNotContain("VBR=", text);
++                Assert.DoesNotContain("Flags=", text);
++                Assert.Contains("Velocity=100", text);
++                Assert.Contains("Intensity=100", text);
++                Assert.Contains("Modulation=0", text);
++                Assert.Contains("Tempo=150", text);
++                Assert.Contains("Lyric=R", text);
++                using var reader = new StreamReader(path, Encoding.GetEncoding("shift_jis"));
++                var restored = Ust.Load(reader, path);
++                var restoredPart = Assert.IsType<UVoicePart>(Assert.Single(restored.parts));
++                Assert.Equal(part.notes.Select(n => (n.position, n.duration, n.tone, n.lyric)),
++                    restoredPart.notes.Select(n => (n.position, n.duration, n.tone, n.lyric)));
++                Assert.Equal(original, Yaml.DefaultSerializer.Serialize(part));
++                Ust.SavePart(project, part, path);
++                var normal = File.ReadAllText(path, Encoding.GetEncoding("shift_jis"));
++                Assert.Contains("PBS=", normal);
++                Assert.Contains("VBR=65,", normal);
++                Assert.Equal(original, Yaml.DefaultSerializer.Serialize(part));
++            } finally {
++                File.Delete(path);
++            }
++        }
++    }
++}
+--- a/OpenUtau/Strings/Strings.axaml
++++ b/OpenUtau/Strings/Strings.axaml
+@@ -452,6 +452,7 @@
+   <system:String x:Key="menu.file.exportmixdown">Mixdown To Wav File</system:String>
+   <system:String x:Key="menu.file.exportproject">Export Project</system:String>
+   <system:String x:Key="menu.file.exportust">Export Ust Files</system:String>
++  <system:String x:Key="menu.file.exportuntunedust">Export Untuned Ust Files To...</system:String>
+   <system:String x:Key="menu.file.exportustto">Export Ust Files To...</system:String>
+   <system:String x:Key="menu.file.exportwav">Export Wav Files</system:String>
+   <system:String x:Key="menu.file.exportwavto">Export Wav Files To...</system:String>
+--- a/OpenUtau/Strings/Strings.ja-JP.axaml
++++ b/OpenUtau/Strings/Strings.ja-JP.axaml
+@@ -295,6 +295,7 @@
+   <system:String x:Key="menu.file.exportmixdown">ミックスダウンしたWavファイルを出力</system:String>
+   <system:String x:Key="menu.file.exportproject">プロジェクトファイルをエクスポート</system:String>
+   <system:String x:Key="menu.file.exportust">USTをエクスポート</system:String>
++  <system:String x:Key="menu.file.exportuntunedust">べた打ちUSTをエクスポート...</system:String>
+   <system:String x:Key="menu.file.exportustto">別名でUSTをエクスポート...</system:String>
+   <system:String x:Key="menu.file.exportwav">Wavファイルを出力</system:String>
+   <system:String x:Key="menu.file.exportwavto">別名でWavファイルを出力...</system:String>
+--- a/OpenUtau/Views/MainWindow.axaml
++++ b/OpenUtau/Views/MainWindow.axaml
+@@ -53,6 +53,7 @@
+             <MenuItem Header="{DynamicResource menu.file.exportproject}">
+               <MenuItem Header="{DynamicResource menu.file.exportust}" Click="OnMenuExportUst"/>
+               <MenuItem Header="{DynamicResource menu.file.exportustto}" Click="OnMenuExportUstTo"/>
++              <MenuItem Header="{DynamicResource menu.file.exportuntunedust}" Click="OnMenuExportUntunedUstTo"/>
+               <MenuItem Header="{DynamicResource menu.file.exportmidi}" Click="OnMenuExportMidi"/>
+               <MenuItem Header="{DynamicResource menu.file.exportds}" Click="OnMenuExportDsTo"/>
+             </MenuItem>
+--- a/OpenUtau/Views/MainWindow.axaml.cs
++++ b/OpenUtau/Views/MainWindow.axaml.cs
+@@ -579,15 +579,23 @@
+         }
+
+         async void OnMenuExportUstTo(object sender, RoutedEventArgs e) {
++            await ExportUstTo(false);
++        }
++
++        async void OnMenuExportUntunedUstTo(object sender, RoutedEventArgs e) {
++            await ExportUstTo(true);
++        }
++
++        async Task ExportUstTo(bool untuned) {
+             var project = DocManager.Inst.Project;
+             var file = await FilePicker.SaveFileAboutProject(
+-                this, "menu.file.exportustto", FilePicker.UST);
++                this, untuned ? "menu.file.exportuntunedust" : "menu.file.exportustto", FilePicker.UST);
+             if (!string.IsNullOrEmpty(file)) {
+                 for (var i = 0; i < project.parts.Count; i++) {
+                     var part = project.parts[i];
+                     if (part is UVoicePart voicePart) {
+                         var savePath = PathManager.Inst.GetPartSavePath(file, voicePart.DisplayName, i);
+-                        Ust.SavePart(project, voicePart, savePath);
++                        Ust.SavePart(project, voicePart, savePath, untuned);
+                         DocManager.Inst.ExecuteCmd(new ProgressBarNotification(0, $"{savePath}."));
+                     }
+                 }

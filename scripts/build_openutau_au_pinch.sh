@@ -20,7 +20,7 @@ test "$(git -C "$source_dir" rev-parse HEAD)" = bc194b6fe4897427a73066390b286e11
 test ! -e "$output_app" || { echo "Output already exists: $output_app" >&2; exit 1; }
 official_hash=$(shasum -a 256 "$official_app/Contents/MacOS/OpenUtau.dll" | awk '{print $1}')
 test "$official_hash" = fd81ab35c3691715da0feaa8308dd534552df79e1e48ed012a95ea5add644855 || \
-test "$official_hash" = d6c8e36f176d62e075d4d70e88607f5611e82220329382567d9fe2ef793324a4 || \
+test "$official_hash" = 4a74a2357a16d34f1da2ceedefd71b312ad25307aacb19b076dcb455ae9b5e68 || \
 test "$official_hash" = 721d280152da239995f4b5fcee4f734ae7ab31de2c4c358d8d5e3dfcf0c8a147 || {
     echo 'Expected official or current OpenUtau AU 0.1.576 app.' >&2
     exit 1
@@ -81,6 +81,14 @@ elif ! git -C "$source_dir" apply --reverse --check "$gain_patch" 2>/dev/null; t
     exit 1
 fi
 
+untuned_patch="$repo/patches/openutau-untuned-ust-0.1.576.patch"
+if git -C "$source_dir" apply --check "$untuned_patch" 2>/dev/null; then
+    git -C "$source_dir" apply "$untuned_patch"
+elif ! git -C "$source_dir" apply --reverse --check "$untuned_patch" 2>/dev/null; then
+    echo 'Source differs from the expected untuned UST export patch state.' >&2
+    exit 1
+fi
+
 # Keep the bundled XML signature implementation on the fixed NuGet line.
 # The official 0.1.576 source resolves 10.0.11, which is affected by the
 # current NuGet advisories; apply this reproducible build-time override after
@@ -97,6 +105,7 @@ fi
     cd "$source_dir"
     "$dotnet" publish OpenUtau -c Release -r osx-arm64 --self-contained true -m:1 \
         -p:Version=0.1.576 -p:AssemblyVersion=0.1.576 -p:FileVersion=0.1.576 \
+        -p:RuntimeFrameworkVersion=10.0.13 \
         -v:quiet
 )
 

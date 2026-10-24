@@ -2,9 +2,15 @@
 
 このブランチは [OpenUtau Bridge](https://github.com/KakaruHayate/openutau-vst-bridge) にAUv2形式を追加したものです。歌詞・音符の編集と歌声の生成はOpenUtauで行い、Logic Proのソフトウェア音源トラックに音声を送ります。LogicのMIDIノート入力から歌詞や音符を生成する機能はありません。
 
+## べた打ちUSTを書き出す
+
+「ファイル → プロジェクトファイルをエクスポート → べた打ちUSTをエクスポート...」で保存先を指定します。各歌唱パートをUSTとして出力し、音程・長さ・歌詞・休符・テンポを残します。ピッチカーブ・ビブラート・音量などの調声は出力に含めず、Velocity/Intensityは100、Modulationは0にします。元のUSTXと通常のUST書き出しは変更しません。音源が未選択でも書き出せます。
+
+この機能はこのMacの改造版向けで、既存公開ZIP one-click.1には含まれません。新規テスト2件と既存USTテスト3件、Release publish、導入後の起動・署名を確認済みです。実メニューから保存する一連の操作は、自動操作時にサブメニューが閉じるため未確認です。再現用パッチは `patches/openutau-untuned-ust-0.1.576.patch`、検証は `UntunedUstExportTest`。UST自体の制約（重なった音符、音符途中のテンポ変更、独自パラメーター等）は従来のUST出力と同じです。編集原稿はUSTXで保存してください。
+
 ## このMacでの配置
 
-- OpenUtau: `/Applications/OpenUtau.app`は公式v0.1.576です。`/Applications/OpenUtau AU.app`は同版を元にピアノロールのトラックパッド・ピンチ拡大縮小を追加した改造版です。指を横に広げると時間軸、縦に広げると音程軸を拡大します。タッチ位置が取得できない場合は両軸を拡大します。Logic連携とピンチ操作には後者を使います。共通設定は`Channel=alpha`、旧設定の`Beta=false`です。
+- OpenUtau: このMacには `/Applications/OpenUtau AU.app` を導入しています。公式版アプリは本人指定で削除済みです。AU版は公式v0.1.576を元にピアノロールのトラックパッド・ピンチ拡大縮小を追加した改造版です。指を横に広げると時間軸、縦に広げると音程軸を拡大します。タッチ位置が取得できない場合は両軸を拡大します。Logic連携とピンチ操作には後者を使います。共通設定は`Channel=alpha`、旧設定の`Beta=false`です。
 - AU音源: `~/Library/Audio/Plug-Ins/Components/OpenUtau Bridge.component`。
 - ローカル中継: `~/Library/Application Support/OpenUtau Bridge/openutau-bridge-relay`。ログイン時に起動するLaunchAgentは`~/Library/LaunchAgents/moe.kakaru.openutau-bridge-relay.plist`です。
 - ビルド元: このフォルダ。AU対応と中継のソースは`CMakeLists.txt`、`src/`、`scripts/`にあります。
