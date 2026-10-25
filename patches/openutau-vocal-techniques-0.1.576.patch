@@ -368,7 +368,7 @@
              <ToggleSwitch IsChecked="{Binding VibratoEnable, Mode=OneWay}" OnContent="{DynamicResource button.on}" OffContent="{DynamicResource button.off}"
 --- /dev/null
 +++ b/OpenUtau.Core/Ustx/VocalTechniques.cs
-@@ -0,0 +1,214 @@
+@@ -0,0 +1,243 @@
 +using System;
 +using System.Collections.Generic;
 +using System.Linq;
@@ -417,12 +417,12 @@
 +                (pair.First.Y == pair.Second.Y || index == 0 && pitch.snapFirst) &&
 +                pair.First.shape == pair.Second.shape).All(matches => matches);
 +
-+        public static bool IsActive(UPitch pitch) => Matches(pitch) &&
++        public static bool IsActive(UPitch pitch) => pitch.techniques != null &&
 +            (pitch.techniques!.scoop || pitch.techniques.fall || pitch.techniques.hammer || pitch.techniques.pull ||
 +                pitch.techniques.overshoot || pitch.techniques.rise);
 +
 +        public static bool IsEnabled(UPitch pitch, string name) {
-+            if (!Matches(pitch)) { return false; }
++            if (pitch.techniques == null) { return false; }
 +            return name switch {
 +                "scoop" => pitch.techniques!.scoop,
 +                "fall" => pitch.techniques!.fall,
@@ -481,14 +481,43 @@
 +            return Set(copy, durationMs, name, true);
 +        }
 +
++        private static void PreserveBaselineEdits(UPitch pitch, VocalTechniqueState state) {
++            // Edited generated points belong to the effect; never bake them into its baseline.
++            for (int i = 0; i < state.original.Count; i++) {
++                var original = state.original[i];
++                int index = i == 0 ? 0 : state.applied.FindIndex(p =>
++                    p.X == original.X && p.Y == original.Y && p.shape == original.shape);
++                if (index < 0 || index >= state.applied.Count) { continue; }
++                var applied = state.applied[index];
++                var current = pitch.data.Count == state.applied.Count ? pitch.data[index] :
++                    pitch.data.FirstOrDefault(p => p.X == applied.X);
++                if (current == null) { continue; }
++                if (current.X != applied.X) { original.X = current.X; }
++                if (current.Y != applied.Y) { original.Y = current.Y; }
++                if (current.shape != applied.shape) { original.shape = current.shape; }
++            }
++            if (pitch.data.Count > state.applied.Count) {
++                state.original.AddRange(pitch.data.Where(p => !state.applied.Any(a => a.X == p.X) &&
++                    !state.original.Any(o => o.X == p.X))
++                    .Select(p => p.Clone()));
++            }
++            state.original = state.original.OrderBy(p => p.X).ToList();
++            state.originalSnapFirst = pitch.snapFirst;
++        }
++
 +        public static UPitch Set(UPitch pitch, double durationMs, string name, bool enabled) {
 +            if (name != "scoop" && name != "fall" && name != "hammer" && name != "pull" && name != "overshoot" && name != "rise") {
 +                throw new ArgumentException("Unknown vocal technique", nameof(name));
 +            }
-+            var state = Matches(pitch) ? pitch.techniques!.Clone() : new VocalTechniqueState {
-+                original = pitch.data.Select(p => p.Clone()).ToList(),
-+                originalSnapFirst = pitch.snapFirst,
-+            };
++            var state = pitch.techniques?.Clone() ?? new VocalTechniqueState();
++            if (!IsActive(pitch) && !Matches(pitch)) {
++                state.original = pitch.data.Select(p => p.Clone()).ToList();
++                state.originalSnapFirst = pitch.snapFirst;
++            } else if (!Matches(pitch)) {
++                PreserveBaselineEdits(pitch, state);
++            }
++            if (state.original.Count == 0) { state.original.Add(new(-40, 0)); }
++            if (state.original.Count == 1) { state.original.Add(new(state.original[0].X + 80, 0)); }
 +            if (pitch.snapFirst && pitch.data.Count > 0 && state.original.Count > 0) {
 +                state.original[0].Y = pitch.data[0].Y;
 +            }
@@ -585,7 +614,7 @@
 +}
 --- /dev/null
 +++ b/OpenUtau.Test/Core/Util/VocalTechniquesTest.cs
-@@ -0,0 +1,346 @@
+@@ -0,0 +1,417 @@
 +using System;
 +using System.Linq;
 +using OpenUtau.Core.Ustx;
@@ -676,6 +705,18 @@
 +                Assert.True(VocalTechniques.IsEnabled(note.pitch, "overshoot"));
 +                Assert.True(VocalTechniques.IsEnabled(note.pitch, "fall"));
 +            }
++            var baseline = note.pitch.techniques!.original.Select(p => p.Clone()).ToList();
++            note.pitch.data[1].Y += 3;
++            foreach (var name in new[] { "pull", "overshoot", "fall" }) {
++                note.pitch = VocalTechniques.Set(note.pitch, note.DurationMs, name, false);
++            }
++            note.Validate(new ValidateOptions(), project, track, part);
++            var disabled = Render.RenderPhrase.FromPart(project, track, part);
++            note.pitch = new UPitch { data = baseline };
++            note.Validate(new ValidateOptions(), project, track, part);
++            var expected = Render.RenderPhrase.FromPart(project, track, part);
++            Assert.Equal(expected.Select(p => p.hash), disabled.Select(p => p.hash));
++            Assert.Equal(expected[0].pitches, disabled[0].pitches);
 +        }
 +
 +        [Theory]
@@ -683,13 +724,17 @@
 +        [InlineData(true, 0, "shape")]
 +        [InlineData(true, 1, "y")]
 +        [InlineData(false, 0, "y")]
-+        public void ActualManualEditsStillInvalidateTechnique(bool snap, int index, string field) {
++        public void EditedTechniqueRemainsEnabledUntilExplicitlyDisabled(bool snap, int index, string field) {
 +            var original = Original(); original.snapFirst = snap;
 +            var pitch = VocalTechniques.Set(original, 600, "hammer", true);
 +            if (field == "x") { pitch.data[index].X += 1; }
 +            else if (field == "y") { pitch.data[index].Y += 1; }
 +            else { pitch.data[index].shape = PitchPointShape.l; }
-+            Assert.False(VocalTechniques.IsActive(pitch));
++            Assert.True(VocalTechniques.IsEnabled(pitch, "hammer"));
++            var off = VocalTechniques.Set(pitch, 600, "hammer", false);
++            Assert.False(VocalTechniques.IsActive(off));
++            Assert.Equal(original.data.Count, off.data.Count);
++            Assert.DoesNotContain(off.data, p => p.Y == -10);
 +        }
 +
 +        [Fact]
@@ -705,14 +750,69 @@
 +            Equal(c, VocalTechniques.Set(c, 600, "hammer", true));
 +            Equal(original, VocalTechniques.Set(VocalTechniques.Set(d, 600, "fall", false), 600, "scoop", false));
 +        }
-+        [Fact]
-+        public void ManualEditsBecomeNewBaseline() {
-+            var pitch = VocalTechniques.Set(Original(), 600, "scoop", true);
-+            pitch.data[2].Y += 3;
-+            Assert.False(VocalTechniques.IsEnabled(pitch, "scoop"));
-+            var saved = pitch.Clone();
-+            Equal(saved, VocalTechniques.Set(VocalTechniques.Set(pitch, 600, "fall", true), 600, "fall", false));
++        [Theory]
++        [InlineData("scoop")]
++        [InlineData("fall")]
++        [InlineData("hammer")]
++        [InlineData("pull")]
++        [InlineData("overshoot")]
++        [InlineData("rise")]
++        public void EditedGeneratedPointCanBeDisabledWithoutBakingInTheTechnique(string name) {
++            var original = new UPitch { data = new() { new(-40, 0), new(40, 0) } };
++            var pitch = VocalTechniques.Set(original, 600, name, true);
++            pitch.data.First(p => !original.data.Any(o => o.X == p.X && o.Y == p.Y && o.shape == p.shape)).Y += 3;
++            Assert.True(VocalTechniques.IsEnabled(pitch, name));
++            pitch = Yaml.DefaultDeserializer.Deserialize<UPitch>(Yaml.DefaultSerializer.Serialize(pitch));
++            var off = VocalTechniques.Set(pitch, 600, name, false);
++            Equal(original, off);
++            var note = UNote.Create(); note.pitch = pitch;
++            var cmd = new SetPitchPointsCommand(new UVoicePart(), note, off);
++            cmd.Execute(); Equal(original, note.pitch);
++            cmd.Unexecute(); Equal(pitch, note.pitch);
++            Assert.True(VocalTechniques.IsEnabled(note.pitch, name));
++            cmd.Execute(); Equal(original, note.pitch);
 +        }
++
++        [Theory]
++        [InlineData(0)] [InlineData(1)]
++        public void DisablingAnIncompleteOriginalPitchKeepsAValidConnection(int count) {
++            foreach (var name in new[] { "scoop", "fall", "hammer", "pull", "overshoot", "rise" }) {
++                var note = UNote.Create();
++                note.pitch = new UPitch();
++                if (count == 1) { note.pitch.data.Add(new(-40, 0)); }
++                note.pitch = VocalTechniques.Set(note.pitch, 600, name, true);
++                note.pitch = VocalTechniques.Set(note.pitch, 600, name, false);
++                Assert.Equal(2, note.pitch.data.Count);
++                note.Validate(new ValidateOptions(), new UProject(), new UTrack(), new UVoicePart());
++                Assert.False(VocalTechniques.IsActive(note.pitch));
++            }
++        }
++
++        [Fact]
++        public void DisablingPreservesEditsToBaselinePointsAndNewManualPoints() {
++            var original = Original();
++            var pitch = VocalTechniques.Set(original, 600, "scoop", true);
++            pitch.data.Last().Y += 3;
++            pitch.data.Add(new(450, 7));
++            var off = VocalTechniques.Set(pitch, 600, "scoop", false);
++            var expected = original.Clone();
++            expected.data.Last().Y += 3;
++            expected.data.Add(new(450, 7));
++            Equal(expected, off);
++        }
++
++        [Fact]
++        public void DisablingOneEditedTechniqueKeepsTheOtherAndItsSettings() {
++            var original = Original();
++            var pitch = VocalTechniques.Set(original, 600, "pull", true);
++            pitch = VocalTechniques.Set(pitch, 600, "fall", true);
++            pitch.data[1].Y += 4;
++            pitch = VocalTechniques.Set(pitch, 600, "pull", false);
++            Equal(VocalTechniques.Set(original, 600, "fall", true), pitch);
++            Assert.True(VocalTechniques.IsEnabled(pitch, "fall"));
++            Equal(original, VocalTechniques.Set(pitch, 600, "fall", false));
++        }
++
 +        [Fact]
 +        public void CloneAndUndoDoNotShareTechniqueState() {
 +            var part = new UVoicePart();
