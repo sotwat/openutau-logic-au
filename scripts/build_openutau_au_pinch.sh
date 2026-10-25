@@ -21,6 +21,7 @@ test ! -e "$output_app" || { echo "Output already exists: $output_app" >&2; exit
 official_hash=$(shasum -a 256 "$official_app/Contents/MacOS/OpenUtau.dll" | awk '{print $1}')
 test "$official_hash" = fd81ab35c3691715da0feaa8308dd534552df79e1e48ed012a95ea5add644855 || \
 test "$official_hash" = 4a74a2357a16d34f1da2ceedefd71b312ad25307aacb19b076dcb455ae9b5e68 || \
+test "$official_hash" = 4e0d79277bd042561ada984b177d9c65f35703b6890c923a19e335db59cb2400 || \
 test "$official_hash" = 721d280152da239995f4b5fcee4f734ae7ab31de2c4c358d8d5e3dfcf0c8a147 || {
     echo 'Expected official or current OpenUtau AU 0.1.576 app.' >&2
     exit 1
