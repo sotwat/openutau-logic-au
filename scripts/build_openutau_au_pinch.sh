@@ -23,6 +23,7 @@ test "$official_hash" = fd81ab35c3691715da0feaa8308dd534552df79e1e48ed012a95ea5a
 test "$official_hash" = 4a74a2357a16d34f1da2ceedefd71b312ad25307aacb19b076dcb455ae9b5e68 || \
 test "$official_hash" = 4e0d79277bd042561ada984b177d9c65f35703b6890c923a19e335db59cb2400 || \
 test "$official_hash" = 1b3fa0bf68160970f6f83d3233efdca52269538ff7c9780cedb0688de3125875 || \
+test "$official_hash" = 622343e85d8728445b990ce4053b1883f471f25d263f8b0f82340151614b5451 || \
 test "$official_hash" = 721d280152da239995f4b5fcee4f734ae7ab31de2c4c358d8d5e3dfcf0c8a147 || {
     echo 'Expected official or current OpenUtau AU 0.1.576 app.' >&2
     exit 1
@@ -91,6 +92,14 @@ elif ! git -C "$source_dir" apply --reverse --check "$untuned_patch" 2>/dev/null
     exit 1
 fi
 
+finder_patch="$repo/patches/openutau-finder-open-0.1.576.patch"
+if git -C "$source_dir" apply --check "$finder_patch" 2>/dev/null; then
+    git -C "$source_dir" apply "$finder_patch"
+elif ! git -C "$source_dir" apply --reverse --check "$finder_patch" 2>/dev/null; then
+    echo 'Source differs from the expected Finder activation patch state.' >&2
+    exit 1
+fi
+
 # Keep the bundled XML signature implementation on the fixed NuGet line.
 # The official 0.1.576 source resolves 10.0.11, which is affected by the
 # current NuGet advisories; apply this reproducible build-time override after
@@ -118,6 +127,9 @@ clang -dynamiclib -fobjc-arc -fblocks -framework AppKit -arch arm64 \
     ${OPENUTAU_PINCH_DEBUG:+-DOPENUTAU_PINCH_DEBUG} \
     "$repo/native/openutau_pinch_axis.m" \
     -o "$output_app/Contents/MacOS/libOpenUtauPinchAxis.dylib"
+python3 "$repo/scripts/configure_macos_documents.py" "$output_app"
+clang -fobjc-arc -framework AppKit -framework CoreServices -arch arm64 \
+    "$repo/native/openutau_file_associations.m" -o "$output_app/Contents/MacOS/openutau-register-files"
 codesign --force --deep --sign - "$output_app"
 codesign --verify --deep --strict "$output_app"
 echo "Built $output_app"

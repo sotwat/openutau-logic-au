@@ -70,6 +70,7 @@ printf '{}' > "$agent"
 plutil -lint "$agent"
 
 if [ "${OPENUTAU_INSTALL_TEST:-}" != 1 ]; then
+    "$app/Contents/MacOS/openutau-register-files" "$app"
     launchctl bootstrap "gui/$(id -u)" "$agent"
     launchctl kickstart -k "gui/$(id -u)/moe.kakaru.openutau-bridge-relay"
     relay_started=false

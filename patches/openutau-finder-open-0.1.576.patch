@@ -1,0 +1,196 @@
+--- a/OpenUtau/App.axaml.cs
++++ b/OpenUtau/App.axaml.cs
+@@ -17,6 +17,16 @@
+ 
+ namespace OpenUtau.App {
+     public class App : Application {
++        readonly ExternalProjectFiles externalProjects = new();
++
++        public void ProjectWindowReady(MainWindow window) => _ = externalProjects.Ready(window.OpenExternalProjects);
++
++        async void OnFileActivated(object? sender, ActivatedEventArgs args) {
++            if (args is FileActivatedEventArgs files) {
++                await externalProjects.Enqueue(files.Files.Where(file => file.Path.IsFile).Select(file => file.Path.LocalPath));
++            }
++        }
++
+         public override void Initialize() {
+             Log.Information("Initializing application.");
+             AvaloniaXamlLoader.Load(this);
+@@ -32,6 +42,9 @@
+             Log.Information("Framework initialization completed.");
+             RegisterUnhandledExceptionHandlers();
+             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) {
++                var activation = this.TryGetFeature<IActivatableLifetime>();
++                if (activation != null) { activation.Activated += OnFileActivated; }
++                _ = externalProjects.Enqueue(Environment.GetCommandLineArgs().Skip(1));
+                 desktop.MainWindow = new SplashWindow();
+             }
+ 
+--- a/OpenUtau/Views/MainWindow.axaml.cs
++++ b/OpenUtau/Views/MainWindow.axaml.cs
+@@ -144,6 +144,7 @@
+ 
+         public void InitProject() {
+             viewModel.InitProject(this);
++            (Application.Current as App)?.ProjectWindowReady(this);
+         }
+ 
+         void OnEditTimeSignature(object sender, PointerPressedEventArgs args) {
+@@ -298,6 +299,20 @@
+             }
+             viewModel.NewProject();
+             viewModel.Page = 1;
++        }
++
++        public async Task OpenExternalProjects(string[] files) {
++            if (WindowState == WindowState.Minimized) { WindowState = WindowState.Normal; }
++            Activate();
++            if (!DocManager.Inst.ChangesSaved && !await AskIfSaveAndContinue()) { return; }
++            try {
++                viewModel.OpenProject(files);
++                viewModel.Page = 1;
++            } catch (Exception e) {
++                Log.Error(e, "Failed to open Finder project");
++                await MessageBox.ShowError(this, new MessageCustomizableException(
++                    "Failed to open files", "<translate:errors.failed.openfile>:\n" + string.Join("\n", files), e));
++            }
+         }
+ 
+         void OnMenuOpen(object sender, RoutedEventArgs args) => Open();
+@@ -2151,7 +2166,7 @@
+             switch (result) {
+                 case MessageBox.MessageBoxResult.Yes:
+                     await Save();
+-                    goto case MessageBox.MessageBoxResult.No;
++                    return DocManager.Inst.ChangesSaved;
+                 case MessageBox.MessageBoxResult.No:
+                     return true; // Continue.
+                 default:
+--- a/OpenUtau/ViewModels/MainWindowViewModel.cs
++++ b/OpenUtau/ViewModels/MainWindowViewModel.cs
+@@ -214,18 +214,6 @@
+                 return;
+             }
+           
+-            var args = Environment.GetCommandLineArgs();
+-            if (args.Length == 2 && File.Exists(args[1])) {
+-                try {
+-                    Core.Format.Formats.LoadProject(new string[] { args[1] });
+-                    Page = 1;
+-                    DocManager.Inst.ExecuteCmd(new VoiceColorRemappingNotification(-1, true));
+-                } catch (Exception e) {
+-                    var customEx = new MessageCustomizableException($"Failed to open file {args[1]}", $"<translate:errors.failed.openfile>: {args[1]}", e);
+-                    DocManager.Inst.ExecuteCmd(new ErrorMessageNotification(customEx));
+-                }
+-                return;
+-            }
+         }
+ 
+         public void NewProject() {
+--- /dev/null
++++ b/OpenUtau/ExternalProjectFiles.cs
+@@ -0,0 +1,51 @@
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Linq;
++using System.Threading.Tasks;
++
++[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("OpenUtau.Test")]
++
++namespace OpenUtau.App {
++    internal sealed class ExternalProjectFiles {
++        readonly Queue<string[]> pending = new();
++        Func<string[], Task>? open;
++        bool processing;
++
++        internal static string[] SelectPaths(IEnumerable<string> paths) => paths
++            .Where(path => !string.IsNullOrWhiteSpace(path))
++            .Select(path => Uri.TryCreate(path, UriKind.Absolute, out var uri) ? (uri.IsFile ? uri.LocalPath : null) : path)
++            .OfType<string>()
++            .Where(path => new[] { ".ust", ".ustx", ".mid", ".midi" }
++                .Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
++            .Select(Path.GetFullPath).Distinct(StringComparer.Ordinal).ToArray();
++
++        internal Task Enqueue(IEnumerable<string> paths) {
++            var files = SelectPaths(paths);
++            if (files.Length > 0) { pending.Enqueue(files); }
++            return Drain();
++        }
++
++        internal Task Ready(Func<string[], Task> handler) {
++            open = handler;
++            return Drain();
++        }
++
++        async Task Drain() {
++            if (open == null || processing) { return; }
++            processing = true;
++            try {
++                while (pending.Count > 0) {
++                    var files = pending.Dequeue();
++                    if (files.All(file => Path.GetExtension(file).Equals(".ust", StringComparison.OrdinalIgnoreCase))) {
++                        await open(files);
++                    } else {
++                        foreach (var file in files) { await open(new[] { file }); }
++                    }
++                }
++            } finally {
++                processing = false;
++            }
++        }
++    }
++}
+--- /dev/null
++++ b/OpenUtau.Test/App/ExternalProjectFilesTest.cs
+@@ -0,0 +1,49 @@
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Linq;
++using System.Threading.Tasks;
++using Xunit;
++
++namespace OpenUtau.App {
++    public class ExternalProjectFilesTest {
++        [Fact]
++        public void SelectsOnlyRequestedProjectsAndDecodesFileUris() {
++            var folder = Path.Combine(Path.GetTempPath(), "日本語 空白");
++            var project = Path.Combine(folder, "譜面.USTX");
++            Assert.Equal(new[] { project, Path.Combine(folder, "song.midi") },
++                ExternalProjectFiles.SelectPaths(new[] { new Uri(project).AbsoluteUri, project,
++                    Path.Combine(folder, "song.midi"), "audio.wav", "audio.mp3", "https://example.invalid/a.ust", "-psn_123" }));
++        }
++
++        [Fact]
++        public async Task WaitsForStartupAndSerializesRequestsWhileDialogIsOpen() {
++            var queue = new ExternalProjectFiles();
++            var seen = new List<string>();
++            var gate = new TaskCompletionSource();
++            await queue.Enqueue(new[] { "/tmp/first.ustx" });
++            Assert.Empty(seen);
++            var ready = queue.Ready(async files => {
++                seen.AddRange(files);
++                if (seen.Count == 1) { await gate.Task; }
++            });
++            await queue.Enqueue(new[] { "/tmp/second.mid" });
++            Assert.Single(seen);
++            gate.SetResult();
++            await ready;
++            Assert.Equal(new[] { "/tmp/first.ustx", "/tmp/second.mid" }, seen);
++            await queue.Enqueue(new[] { "/tmp/third.midi" });
++            Assert.Equal("/tmp/third.midi", seen.Last());
++        }
++
++        [Fact]
++        public async Task GroupsUstTracksButDoesNotSilentlyDropMixedProjects() {
++            var queue = new ExternalProjectFiles();
++            var seen = new List<string[]>();
++            await queue.Ready(files => { seen.Add(files); return Task.CompletedTask; });
++            await queue.Enqueue(new[] { "/tmp/a.ust", "/tmp/b.UST" });
++            await queue.Enqueue(new[] { "/tmp/a.ustx", "/tmp/b.mid" });
++            Assert.Equal(new[] { 2, 1, 1 }, seen.Select(files => files.Length));
++        }
++    }
++}

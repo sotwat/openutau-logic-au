@@ -15,6 +15,12 @@ def main():
         setup = next(root.glob('*/セットアップ.app'))
         subprocess.run(['codesign', '--verify', '--deep', '--strict', str(setup)], check=True)
         resources = setup / 'Contents/Resources'
+        info = plistlib.loads((resources / 'payload/OpenUtau.app/Contents/Info.plist').read_bytes())
+        extensions = {ext for item in info['CFBundleDocumentTypes'] for ext in item['CFBundleTypeExtensions']}
+        assert extensions == {'ust', 'ustx', 'mid', 'midi'}
+        assert info['CFBundleDisplayName'] == 'OpenUtau AU'
+        assert (resources / 'payload/OpenUtau.app/Contents/MacOS/openutau-register-files').exists()
+
         home = root / 'home'
         prefs = home / 'Library/OpenUtau/prefs.json'
         prefs.parent.mkdir(parents=True)
