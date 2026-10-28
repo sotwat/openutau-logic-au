@@ -22,7 +22,7 @@ Apple Silicon Mac・Logic Pro向けです。Logic Proは別途必要です。イ
 
 ## 収録内容とライセンス
 
-この配布は `0.1.576-one-click.5`、OpenUtau公式0.1.576をベースにした改造版です。起動時の公式更新通知は無効です。
+この配布は `0.1.576-one-click.6`、OpenUtau公式0.1.576をベースにした改造版です。起動時の公式更新通知は無効です。
 
 - Logic用AUとローカル中継、縦横を分けるピンチ拡大縮小
 - Shift＋上下のオクターブ移動、Backspaceでパート削除、Command＋Returnで0秒へ移動

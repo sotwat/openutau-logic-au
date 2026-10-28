@@ -123,12 +123,12 @@ fi
 ditto "$official_app" "$output_app"
 ditto "$source_dir/OpenUtau/bin/Release/net10.0/osx-arm64/publish/." \
     "$output_app/Contents/MacOS/"
-clang -dynamiclib -fobjc-arc -fblocks -framework AppKit -arch arm64 \
+clang -dynamiclib -fobjc-arc -fblocks -framework AppKit -arch arm64 -mmacosx-version-min=12.0 \
     ${OPENUTAU_PINCH_DEBUG:+-DOPENUTAU_PINCH_DEBUG} \
     "$repo/native/openutau_pinch_axis.m" \
     -o "$output_app/Contents/MacOS/libOpenUtauPinchAxis.dylib"
 python3 "$repo/scripts/configure_macos_documents.py" "$output_app"
-clang -fobjc-arc -framework AppKit -framework CoreServices -arch arm64 \
+clang -fobjc-arc -framework AppKit -framework CoreServices -arch arm64 -mmacosx-version-min=12.0 \
     "$repo/native/openutau_file_associations.m" -o "$output_app/Contents/MacOS/openutau-register-files"
 codesign --force --deep --sign - "$output_app"
 codesign --verify --deep --strict "$output_app"
