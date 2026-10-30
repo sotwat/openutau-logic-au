@@ -5,6 +5,7 @@ repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 app=${OPENUTAU_APP:-/Applications/OpenUtau AU.app}
 version=0.1.576-one-click.7
 expected_app_sha=f079541f8216cbd240837bd3d204b041cc8e3498fc568be2fa3f89fc029f9a4e
+expected_release_app_sha=b7c5540024a9f83043d66e09b54957b15e20d5f65160061cfc8a079813d6e7dc
 expected_dll_sha=e44e2c12cf4686668a06153d4d191397a935b1598fed50bda9161aadb6d42e6c
 expected_core_sha=43a6d5d8409c264f6b2e9a5ee88c693451f8420e4f84420bc8a3e7debc53af07
 expected_axis_sha=4fda6e2e0cce594017a9d6cc0cd8a7ce8d973ffe6bb306d0003692999af6ac8b
@@ -12,7 +13,8 @@ name="OpenUtau-Logic-AU-${version}-macos-arm64"
 
 test -d "$app" || { echo "OpenUtau app not found: $app" >&2; exit 1; }
 actual_app_sha=$(shasum -a 256 "$app/Contents/MacOS/OpenUtau" | awk '{print $1}')
-test "$actual_app_sha" = "$expected_app_sha" || {
+test "$actual_app_sha" = "$expected_app_sha" ||
+test "$actual_app_sha" = "$expected_release_app_sha" || {
     echo "Expected the verified OpenUtau AU $version (arm64); found a different executable." >&2
     exit 1
 }
