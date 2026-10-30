@@ -1,0 +1,140 @@
+diff --git a/OpenUtau/Views/MainWindow.axaml b/OpenUtau/Views/MainWindow.axaml
+--- a/OpenUtau/Views/MainWindow.axaml
++++ b/OpenUtau/Views/MainWindow.axaml
+@@ -351,6 +351,7 @@
+           <Canvas Name="TimelineCanvas" Grid.Row="1" Grid.Column="1"
+                   Background="Transparent" ClipToBounds="True"
+                   PointerWheelChanged="TimelinePointerWheelChanged"
++                  PointerTouchPadGestureMagnify="TracksTouchPadMagnify"
+                   PointerPressed="TimelinePointerPressed"
+                   PointerMoved="TimelinePointerMoved"
+                   PointerReleased="TimelinePointerReleased"
+@@ -410,7 +411,8 @@
+                         PointerExited="PartsCanvasPointerExited"
+                         PointerReleased="PartsCanvasPointerReleased"
+                         DoubleTapped="PartsCanvasDoubleTapped"
+-                        PointerWheelChanged="MainPagePointerWheelChanged">
++                        PointerWheelChanged="MainPagePointerWheelChanged"
++                        PointerTouchPadGestureMagnify="TracksTouchPadMagnify">
+             <Rectangle Name="PlayPosHighlight"
+                       Width="{Binding PlayPosHighlightWidth, Mode=OneWay}"
+                       Height="{Binding $parent.Bounds.Height, Mode=OneWay}"
+diff --git a/OpenUtau/Views/MainWindow.axaml.cs b/OpenUtau/Views/MainWindow.axaml.cs
+--- a/OpenUtau/Views/MainWindow.axaml.cs
++++ b/OpenUtau/Views/MainWindow.axaml.cs
+@@ -37,6 +37,14 @@
+             OS.IsMacOS() ? KeyModifiers.Meta : KeyModifiers.Control;
+         private readonly MainWindowViewModel viewModel;
+ 
++        [DllImport("libOpenUtauPinchAxis.dylib")]
++        private static extern int ou_pinch_start();
++
++        [DllImport("libOpenUtauPinchAxis.dylib")]
++        private static extern int ou_pinch_axis();
++
++        private bool trackPinchAxisAvailable;
++
+         private readonly ValueGlide hScroll;
+         private readonly ValueGlide vScroll;
+         private readonly ZoomGlide xZoom;
+@@ -74,6 +82,15 @@
+                 AskIfSaveAndContinue = AskIfSaveAndContinue
+             };
+             InitializeComponent();
++            if (OS.IsMacOS()) {
++                try {
++                    trackPinchAxisAvailable = ou_pinch_start() != 0;
++                } catch (DllNotFoundException) {
++                    trackPinchAxisAvailable = false;
++                } catch (EntryPointNotFoundException) {
++                    trackPinchAxisAvailable = false;
++                }
++            }
+             Log.Information("Initialized main window component.");
+ 
+             // Edit commands validate once per frame instead of once per pointer move.
+@@ -1216,6 +1233,18 @@
+ 
+         public void VScrollPointerWheelChanged(object sender, PointerWheelEventArgs args) {
+             vScroll.By(-VScrollBar.SmallChange * args.Delta.Y, SmoothViewport.IsWheelStep(args.Delta.Y));
++        }
++
++        public void TracksTouchPadMagnify(object sender, PointerDeltaEventArgs args) {
++            var control = (Control)sender;
++            if (control.Bounds.Width <= 0) {
++                return;
++            }
++            var point = args.GetPosition(control);
++            var position = new Point(Math.Clamp(point.X / control.Bounds.Width, 0, 1), 0);
++            int axis = trackPinchAxisAvailable ? ou_pinch_axis() : 0;
++            viewModel.TracksViewModel.OnTrackpadMagnify(position, args.Delta.Y, axis);
++            args.Handled = true;
+         }
+ 
+         public void TimelinePointerWheelChanged(object sender, PointerWheelEventArgs args) {
+diff --git a/OpenUtau/ViewModels/TracksViewModel.cs b/OpenUtau/ViewModels/TracksViewModel.cs
+--- a/OpenUtau/ViewModels/TracksViewModel.cs
++++ b/OpenUtau/ViewModels/TracksViewModel.cs
+@@ -194,6 +194,12 @@
+             SnapUnit = snapUnit;
+         }
+ 
++        internal void OnTrackpadMagnify(Point position, double magnification, int axis) {
++            if (axis != 2 && double.IsFinite(magnification) && magnification != 0) {
++                OnXZoomed(position, magnification / 2);
++            }
++        }
++
+         public void OnXZoomed(Point position, double delta) {
+             bool recenter = true;
+             if (TickOffset == 0 && position.X < 0.1) {
+diff --git a/OpenUtau.Test/App/TrackPinchTest.cs b/OpenUtau.Test/App/TrackPinchTest.cs
+--- /dev/null
++++ b/OpenUtau.Test/App/TrackPinchTest.cs
+@@ -0,0 +1,46 @@
++using System;
++using Avalonia;
++using OpenUtau.App.ViewModels;
++using OpenUtau.Core;
++using OpenUtau.Core.Ustx;
++using ReactiveUI.Builder;
++using Xunit;
++
++namespace OpenUtau.App {
++    [Collection(RenderSingletonCollection.Name)]
++    public class TrackPinchTest {
++        [Fact]
++        public void PinchKeepsPointerTimeAndTrackDimensions() {
++            RxAppBuilder.CreateReactiveUIBuilder().WithCoreServices().BuildApp();
++            var previous = DocManager.Inst.TakeProjectForTest(new UProject());
++            try {
++                var vm = new TracksViewModel { Bounds = new Rect(0, 0, 1000, 500), TickWidth = 0.1, TickOffset = 5000 };
++                double anchor = vm.TickOffset + 0.4 * vm.ViewportTicks;
++                double height = vm.TrackHeight;
++                double vertical = vm.TrackOffset;
++                vm.OnTrackpadMagnify(new Point(0.4, 0), 0.2, 1);
++                Assert.True(vm.TickWidth > 0.1);
++                Assert.Equal(anchor, vm.TickOffset + 0.4 * vm.ViewportTicks, 6);
++                vm.OnTrackpadMagnify(new Point(0.4, 0), -0.1, 1);
++                Assert.True(vm.TickWidth < 0.12);
++                Assert.Equal(anchor, vm.TickOffset + 0.4 * vm.ViewportTicks, 6);
++                Assert.Equal(height, vm.TrackHeight);
++                Assert.Equal(vertical, vm.TrackOffset);
++                double width = vm.TickWidth;
++                foreach (double delta in new[] { 0, double.NaN, double.PositiveInfinity }) {
++                    vm.OnTrackpadMagnify(new Point(0.4, 0), delta, 1);
++                    Assert.Equal(width, vm.TickWidth);
++                }
++                vm.OnTrackpadMagnify(new Point(0.4, 0), 0.4, 2);
++                Assert.Equal(width, vm.TickWidth);
++                vm.OnTrackpadMagnify(new Point(0.4, 0), 0.1, 0);
++                Assert.True(vm.TickWidth > width);
++                vm.OnTrackpadMagnify(new Point(0.4, 0), -10, 1);
++                Assert.True(double.IsFinite(vm.TickWidth) && vm.TickWidth > 0);
++                Assert.InRange(vm.TickOffset, 0, vm.HScrollBarMax);
++            } finally {
++                DocManager.Inst.TakeProjectForTest(previous);
++            }
++        }
++    }
++}

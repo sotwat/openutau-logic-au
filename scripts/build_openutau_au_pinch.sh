@@ -24,6 +24,7 @@ test "$official_hash" = 4a74a2357a16d34f1da2ceedefd71b312ad25307aacb19b076dcb455
 test "$official_hash" = 4e0d79277bd042561ada984b177d9c65f35703b6890c923a19e335db59cb2400 || \
 test "$official_hash" = 1b3fa0bf68160970f6f83d3233efdca52269538ff7c9780cedb0688de3125875 || \
 test "$official_hash" = 622343e85d8728445b990ce4053b1883f471f25d263f8b0f82340151614b5451 || \
+test "$official_hash" = e44e2c12cf4686668a06153d4d191397a935b1598fed50bda9161aadb6d42e6c || \
 test "$official_hash" = 721d280152da239995f4b5fcee4f734ae7ab31de2c4c358d8d5e3dfcf0c8a147 || {
     echo 'Expected official or current OpenUtau AU 0.1.576 app.' >&2
     exit 1
@@ -97,6 +98,14 @@ if git -C "$source_dir" apply --check "$finder_patch" 2>/dev/null; then
     git -C "$source_dir" apply "$finder_patch"
 elif ! git -C "$source_dir" apply --reverse --check "$finder_patch" 2>/dev/null; then
     echo 'Source differs from the expected Finder activation patch state.' >&2
+    exit 1
+fi
+
+track_pinch_patch="$repo/patches/openutau-track-pinch-0.1.576.patch"
+if git -C "$source_dir" apply --check "$track_pinch_patch" 2>/dev/null; then
+    git -C "$source_dir" apply "$track_pinch_patch"
+elif ! git -C "$source_dir" apply --reverse --check "$track_pinch_patch" 2>/dev/null; then
+    echo 'Source differs from the expected track pinch patch state.' >&2
     exit 1
 fi
 
