@@ -3,9 +3,9 @@ set -eu
 
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 app=${OPENUTAU_APP:-/Applications/OpenUtau AU.app}
-version=0.1.576-one-click.6
-expected_app_sha=d85716f36530e718f8248f065a20f42dfaa013119a9cb7e7e56f0ed66e45d4e1
-expected_dll_sha=622343e85d8728445b990ce4053b1883f471f25d263f8b0f82340151614b5451
+version=0.1.576-one-click.7
+expected_app_sha=f079541f8216cbd240837bd3d204b041cc8e3498fc568be2fa3f89fc029f9a4e
+expected_dll_sha=e44e2c12cf4686668a06153d4d191397a935b1598fed50bda9161aadb6d42e6c
 expected_core_sha=43a6d5d8409c264f6b2e9a5ee88c693451f8420e4f84420bc8a3e7debc53af07
 expected_axis_sha=4fda6e2e0cce594017a9d6cc0cd8a7ce8d973ffe6bb306d0003692999af6ac8b
 name="OpenUtau-Logic-AU-${version}-macos-arm64"
@@ -57,6 +57,8 @@ PLIST
 clang -fobjc-arc -fblocks -arch arm64 -mmacosx-version-min=11.0 -framework Cocoa \
     "$repo/distribution/setup_macos.m" -o "$setup/Contents/MacOS/Setup"
 ditto "$app" "$resources/payload/OpenUtau.app"
+python3 "$repo/scripts/configure_macos_documents.py" "$resources/payload/OpenUtau.app"
+codesign --force --deep --sign - --timestamp=none "$resources/payload/OpenUtau.app"
 ditto "$repo/build/assets/OpenUtau Bridge.component" "$resources/payload/OpenUtau Bridge.component"
 ditto "$repo/build/openutau-bridge-relay" "$resources/payload/openutau-bridge-relay"
 codesign --force --deep --sign - --timestamp=none "$resources/payload/OpenUtau Bridge.component"

@@ -19,6 +19,7 @@ def main():
         extensions = {ext for item in info['CFBundleDocumentTypes'] for ext in item['CFBundleTypeExtensions']}
         assert extensions == {'ust', 'ustx', 'mid', 'midi'}
         assert info['CFBundleDisplayName'] == 'OpenUtau AU'
+        assert info['CFBundleVersion'] == '0.1.576.7'
         assert (resources / 'payload/OpenUtau.app/Contents/MacOS/openutau-register-files').exists()
 
         home = root / 'home'

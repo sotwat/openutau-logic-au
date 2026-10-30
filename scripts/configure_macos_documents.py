@@ -10,7 +10,7 @@ def configure(app):
     bundle_id = 'moe.kakaru.openutau.logic-au'
     info.update(CFBundleIdentifier='com.stakira.openutau', CFBundleName='OpenUtau AU',
                 CFBundleDisplayName='OpenUtau AU', CFBundleShortVersionString='0.1.576',
-                CFBundleVersion='0.1.576.6')
+                CFBundleVersion='0.1.576.7')
     info['UTExportedTypeDeclarations'] = [
         {'UTTypeIdentifier': bundle_id + '.' + ext, 'UTTypeDescription': name,
          'UTTypeConformsTo': ['public.data'],
