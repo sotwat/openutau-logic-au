@@ -1,0 +1,383 @@
+diff --git a/OpenUtau/Controls/PianoRoll.axaml b/OpenUtau/Controls/PianoRoll.axaml
+--- a/OpenUtau/Controls/PianoRoll.axaml
++++ b/OpenUtau/Controls/PianoRoll.axaml
+@@ -370,6 +370,10 @@
+               <MenuItem Header="{DynamicResource pianoroll.menu.lyrics}" ItemsSource="{Binding LyricBatchEdits}" Classes="MenuItemWithSubMenu"/>
+               <MenuItem Header="{DynamicResource pianoroll.menu.reset}" ItemsSource="{Binding ResetBatchEdits}" Classes="MenuItemWithSubMenu"/>
+               <MenuItem Header="{DynamicResource pianoroll.menu.external}" ItemsSource="{Binding ExternalBatchEdits}" Classes="MenuItemWithSubMenu"/>
++              <MenuItem Header="{DynamicResource pianoroll.autotune.menu}">
++                <MenuItem Header="AutoPitchwriter" Click="OnMenuAutoPitchwriter"/>
++                <MenuItem Header="EnuPitch…" Click="OnMenuEnuPitch"/>
++              </MenuItem>
+               <MenuItem Header="{DynamicResource pianoroll.menu.part.legacypluginexp}" ItemsSource="{Binding LegacyPlugins}" Name="PluginMenu" Classes="MenuItemWithSubMenu"/>
+             </MenuItem>
+             <MenuItem Header="{DynamicResource pianoroll.menu.lyrics.edit}" Click="OnMenuEditLyrics"/>
+diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
+--- a/OpenUtau/Strings/Strings.axaml
++++ b/OpenUtau/Strings/Strings.axaml
+@@ -618,6 +618,23 @@
+   <system:String x:Key="phoneticassistant.copy">Copy</system:String>
+ 
+   <system:String x:Key="pianoroll.key">Key (for scale degree display)</system:String>
++  <system:String x:Key="pianoroll.autotune.menu">Automatic tuning</system:String>
++  <system:String x:Key="pianoroll.autotune.strength">Vocal strength</system:String>
++  <system:String x:Key="pianoroll.autotune.style">Singing style</system:String>
++  <system:String x:Key="pianoroll.autotune.shift">Style shift (semitones)</system:String>
++  <system:String x:Key="pianoroll.autotune.run">Generate pitch</system:String>
++  <system:String x:Key="pianoroll.autotune.warning">AutoPitchwriter recreates the notes in this range. OpenUtau AU note volumes and vocal technique settings will be lost. You can undo this operation. Continue?</system:String>
++  <system:String x:Key="pianoroll.autotune.range">Select consecutive, non-overlapping notes.</system:String>
++  <system:String x:Key="pianoroll.autotune.enumeter">EnuPitch supports a single 3/4, 4/4 or 6/8 meter per selection.</system:String>
++  <system:String x:Key="pianoroll.autotune.apwmeter">AutoPitchwriter requires 4/4.</system:String>
++  <system:String x:Key="pianoroll.autotune.two">Select at least two sung notes.</system:String>
++  <system:String x:Key="pianoroll.autotune.tempo">Select a range with a constant tempo.</system:String>
++  <system:String x:Key="pianoroll.autotune.running">Preparing and running the tuner…</system:String>
++  <system:String x:Key="pianoroll.autotune.changed">The project changed during tuning. No changes were applied.</system:String>
++  <system:String x:Key="pianoroll.autotune.lyric">Lyrics must not contain line breaks.</system:String>
++  <system:String x:Key="pianoroll.autotune.resources">The automatic tuning files are missing. Reinstall this version of OpenUtau AU.</system:String>
++  <system:String x:Key="pianoroll.autotune.rosetta">AutoPitchwriter runs through Wine and requires Rosetta on Apple Silicon. Install Rosetta and try again.</system:String>
++  <system:String x:Key="pianoroll.autotune.failed">Automatic tuning failed. No changes were applied.</system:String>
+   <system:String x:Key="pianoroll.menu.batch">Batch Edits</system:String>
+   <system:String x:Key="pianoroll.menu.batch.running">Running batch edit</system:String>
+   <system:String x:Key="pianoroll.menu.external">External</system:String>
+diff --git a/OpenUtau/Strings/Strings.ja-JP.axaml b/OpenUtau/Strings/Strings.ja-JP.axaml
+--- a/OpenUtau/Strings/Strings.ja-JP.axaml
++++ b/OpenUtau/Strings/Strings.ja-JP.axaml
+@@ -460,6 +460,23 @@
+   <system:String x:Key="phoneticassistant.copy">コピー</system:String>
+ 
+   <system:String x:Key="pianoroll.key">キー（スケール表示）</system:String>
++  <system:String x:Key="pianoroll.autotune.menu">自動調声</system:String>
++  <system:String x:Key="pianoroll.autotune.strength">強弱</system:String>
++  <system:String x:Key="pianoroll.autotune.style">歌唱スタイル</system:String>
++  <system:String x:Key="pianoroll.autotune.shift">スタイルシフト（半音）</system:String>
++  <system:String x:Key="pianoroll.autotune.run">ピッチを生成</system:String>
++  <system:String x:Key="pianoroll.autotune.warning">AutoPitchwriterは対象範囲のノートを作り直します。OpenUtau AUのノート音量と歌唱テクニックの設定は失われます。実行後は「元に戻す」で取り消せます。実行しますか？</system:String>
++  <system:String x:Key="pianoroll.autotune.range">重なりのない連続したノートを選択してください。</system:String>
++  <system:String x:Key="pianoroll.autotune.enumeter">EnuPitchは3/4、4/4、6/8に対応します。拍子が変わる場合は区間を分けて選択してください。</system:String>
++  <system:String x:Key="pianoroll.autotune.apwmeter">AutoPitchwriterは4/4の区間で使えます。</system:String>
++  <system:String x:Key="pianoroll.autotune.two">歌唱ノートを2つ以上選択してください。</system:String>
++  <system:String x:Key="pianoroll.autotune.tempo">テンポが変わる場合は区間を分けて選択してください。</system:String>
++  <system:String x:Key="pianoroll.autotune.running">自動調声を実行しています。初回は必要なファイルを取得します。</system:String>
++  <system:String x:Key="pianoroll.autotune.changed">実行中に譜面が変わったため、結果を適用しませんでした。</system:String>
++  <system:String x:Key="pianoroll.autotune.lyric">改行のある歌詞には適用できません。</system:String>
++  <system:String x:Key="pianoroll.autotune.resources">自動調声のファイルがありません。この版のOpenUtau AUを入れ直してください。</system:String>
++  <system:String x:Key="pianoroll.autotune.rosetta">AutoPitchwriterをApple Siliconで使うにはRosettaが必要です。Rosettaをインストールしてから再実行してください。</system:String>
++  <system:String x:Key="pianoroll.autotune.failed">自動調声に失敗しました。譜面は変更していません。</system:String>
+   <system:String x:Key="pianoroll.menu.batch">一括編集</system:String>
+   <system:String x:Key="pianoroll.menu.batch.running">一括編集を実行中</system:String>
+   <system:String x:Key="pianoroll.menu.external">OpenUtauプラグイン</system:String>
+diff --git a/OpenUtau/Controls/PianoRoll.AutoTuning.cs b/OpenUtau/Controls/PianoRoll.AutoTuning.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau/Controls/PianoRoll.AutoTuning.cs
+@@ -0,0 +1,237 @@
++using System;
++using System.Collections.Generic;
++using System.Diagnostics;
++using System.Globalization;
++using System.IO;
++using System.Linq;
++using System.Text;
++using System.Text.Json;
++using System.Threading;
++using System.Threading.Tasks;
++using Avalonia;
++using Avalonia.Controls;
++using Avalonia.Input;
++using Avalonia.Interactivity;
++using Avalonia.Layout;
++using OpenUtau.App.Views;
++using OpenUtau.Classic;
++using OpenUtau.Core;
++using OpenUtau.Core.Ustx;
++using OpenUtau.Core.Util;
++
++namespace OpenUtau.App.Controls {
++    public partial class PianoRoll {
++        private bool tuning;
++        private static string TuneText(string key) => ThemeManager.GetString("pianoroll.autotune." + key);
++        private static readonly string[] TuningStyles = { "Standard", "Sweet", "Rock", "Breathy", "Pop", "Growl" };
++        private static readonly string[] TuningStrengths = { "Loudest", "Loud", "Normal", "Soft" };
++        private record TuningOptions(string Strength, string Style, int Shift);
++
++        private async void OnMenuAutoPitchwriter(object? sender, RoutedEventArgs args) =>
++            await RunBuiltInTuning(false);
++        private async void OnMenuEnuPitch(object? sender, RoutedEventArgs args) =>
++            await RunBuiltInTuning(true);
++
++        private Task<TuningOptions?> ChooseTuningOptions(Window parent) {
++            var strength = new ComboBox { ItemsSource = TuningStrengths, SelectedIndex = 1 };
++            var style = new ComboBox { ItemsSource = TuningStyles, SelectedIndex = 0 };
++            var shift = new ComboBox {
++                ItemsSource = Enumerable.Range(-6, 13).Select(x => x > 0 ? $"+{x}" : x.ToString()).ToArray(),
++                SelectedIndex = 6,
++            };
++            var dialog = new Window {
++                Title = "EnuPitch", Width = 360, SizeToContent = SizeToContent.Height,
++                CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner,
++            };
++            var body = new StackPanel { Spacing = 8, Margin = new Thickness(18) };
++            foreach (var (key, field) in new[] { ("strength", strength), ("style", style), ("shift", shift) }) {
++                var label = new Label { Content = TuneText(key), Target = field };
++                body.Children.Add(label);
++                body.Children.Add(field);
++            }
++            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
++                HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0) };
++            var cancel = new Button { Content = ThemeManager.GetString("button.cancel"), IsCancel = true };
++            cancel.Click += (_, _) => dialog.Close(null);
++            var apply = new Button { Content = TuneText("run"), IsDefault = true };
++            apply.Click += (_, _) => dialog.Close(new TuningOptions(
++                TuningStrengths[strength.SelectedIndex], TuningStyles[style.SelectedIndex], shift.SelectedIndex - 6));
++            buttons.Children.Add(cancel);
++            buttons.Children.Add(apply);
++            body.Children.Add(buttons);
++            dialog.Content = body;
++            dialog.Opened += (_, _) => strength.Focus();
++            return dialog.ShowDialog<TuningOptions?>(parent);
++        }
++
++        private async Task RunBuiltInTuning(bool enu) {
++            if (tuning || !OS.IsMacOS()) { return; }
++            var vm = ViewModel.NotesViewModel;
++            var project = vm.Project;
++            var part = vm.Part;
++            if (part == null || part.notes.Count == 0) { return; }
++            var parent = RootWindow;
++            var name = enu ? "EnuPitch" : "AutoPitchwriter";
++            tuning = true;
++            try {
++                var selected = vm.Selection.IsEmpty ? part.notes.ToArray() : vm.Selection.OrderBy(n => n.position).ToArray();
++                var first = selected.First();
++                var last = selected.Last();
++                if (!selected.SequenceEqual(part.notes.Where(n => n.position >= first.position && n.position <= last.position)) ||
++                    selected.Zip(selected.Skip(1)).Any(pair => pair.First.End > pair.Second.position)) {
++                    throw new InvalidOperationException(TuneText("range"));
++                }
++                int start = part.position + first.position;
++                project.timeAxis.TickPosToBarBeat(start, out int bar, out _, out _);
++                int barStart = project.timeAxis.BarBeatToTickPos(bar, 0);
++                var signature = project.timeSignatures.Last(s => s.barPosition <= bar);
++                string meter = $"{signature.beatPerBar}/{signature.beatUnit}";
++                int end = part.position + last.End;
++                if ((enu ? meter is not ("3/4" or "4/4" or "6/8") : meter != "4/4") ||
++                    project.timeSignatures.Any(s => s.barPosition > bar &&
++                        project.timeAxis.BarBeatToTickPos(s.barPosition, 0) < end)) {
++                    throw new InvalidOperationException(TuneText(enu ? "enumeter" : "apwmeter"));
++                }
++
++                TuningOptions? options = null;
++                if (enu) {
++                    if (selected.Count(n => !string.Equals(n.lyric, "R", StringComparison.OrdinalIgnoreCase)) < 2) {
++                        throw new InvalidOperationException(TuneText("two"));
++                    }
++                    if (project.tempos.Any(t => t.position > barStart && t.position < end)) {
++                        throw new InvalidOperationException(TuneText("tempo"));
++                    }
++                    options = await ChooseTuningOptions(parent);
++                    if (options == null) { return; }
++                } else if (await MessageBox.Show(parent, TuneText("warning"), name,
++                    MessageBox.MessageBoxButtons.YesNo) != MessageBox.MessageBoxResult.Yes) {
++                    return;
++                }
++
++                var notes = part.notes.Select(n => (n, n.position, n.duration, n.tone, n.lyric, n.pitch)).ToArray();
++                var temp = Directory.CreateTempSubdirectory("openutau-autotune-");
++                try {
++                    string input = Path.Combine(temp.FullName, "selection.tmp");
++                    string output = Path.Combine(temp.FullName, "pitch.json");
++                    var sequence = enu ? WriteEnuSelection(input, project, part, selected, barStart)
++                        : Ust.WritePlugin(project, part, first, last, input);
++                    var before = File.ReadAllBytes(input);
++                    var data = Path.Combine(PathManager.Inst.DataPath, "AutoTuning");
++                    var args = enu ? new[] { "enu", data, "--input", input, "--output", output, "--meter", meter,
++                        "--loudness", options!.Strength, "--style", options.Style,
++                        "--shift", options.Shift.ToString(CultureInfo.InvariantCulture) }
++                        : new[] { "apw", data, Preferences.Default.WinePath ?? "", input };
++                    await MessageBox.ShowProcessing(parent, TuneText("running"), name,
++                        (_, token) => RunTuningProcess(args, token).GetAwaiter().GetResult());
++                    if (!ReferenceEquals(vm.Project, project) || !project.parts.Contains(part) ||
++                        !notes.SequenceEqual(part.notes.Select(n => (n, n.position, n.duration, n.tone, n.lyric, n.pitch)))) {
++                        throw new InvalidOperationException(TuneText("changed"));
++                    }
++                    if (enu) {
++                        var pitches = JsonSerializer.Deserialize<float[][][]>(File.ReadAllText(output));
++                        if (pitches == null || pitches.Length != sequence.Count) {
++                            throw new InvalidDataException("Invalid EnuPitch output.");
++                        }
++                        var commands = sequence.Zip(pitches).Where(pair =>
++                            selected.Contains(pair.First) && pair.Second.Length >= 2)
++                            .Select(pair => new SetPitchPointsCommand(part, pair.First, BuildTunedPitch(pair.First, pair.Second))).ToArray();
++                        if (commands.Length == 0) { throw new InvalidDataException("EnuPitch returned no pitch curves."); }
++                        DocManager.Inst.StartUndoGroup("command.pitch.add");
++                        foreach (var command in commands) { DocManager.Inst.ExecuteCmd(command); }
++                        DocManager.Inst.EndUndoGroup();
++                    } else if (!before.SequenceEqual(File.ReadAllBytes(input))) {
++                        var (remove, add) = Ust.ParsePlugin(project, part, first, last, sequence, input);
++                        DocManager.Inst.StartUndoGroup("command.batch.plugin");
++                        DocManager.Inst.ExecuteCmd(new RemoveNoteCommand(part, remove));
++                        DocManager.Inst.ExecuteCmd(new AddNoteCommand(part, add));
++                        DocManager.Inst.EndUndoGroup();
++                    }
++                } finally {
++                    temp.Delete(true);
++                }
++            } catch (OperationCanceledException) {
++            } catch (Exception e) {
++                await MessageBox.ShowError(parent, e, name);
++            } finally {
++                tuning = false;
++            }
++        }
++
++        private static List<UNote> WriteEnuSelection(string file, UProject project, UVoicePart part,
++            UNote[] notes, int barStart) {
++            var sequence = new List<UNote>();
++            using var writer = new StreamWriter(file, false, Encoding.GetEncoding(932,
++                EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback));
++            writer.WriteLine(FormattableString.Invariant(
++                $"[#SETTING]\nTempo={project.timeAxis.GetBpmAtTick(barStart)}\nVoiceDir=unused\nCacheDir=unused\nMode2=True"));
++            void Write(UNote note) {
++                if (note.lyric.Contains('\n') || note.lyric.Contains('\r')) {
++                    throw new InvalidDataException(TuneText("lyric"));
++                }
++                writer.WriteLine(FormattableString.Invariant(
++                    $"[#{sequence.Count:D4}]\nLength={note.duration}\nLyric={note.lyric}\nNoteNum={note.tone}\nVelocity=100"));
++                sequence.Add(note);
++            }
++            int cursor = barStart - part.position;
++            foreach (var note in notes) {
++                if (note.position > cursor) {
++                    var rest = UNote.Create();
++                    rest.position = cursor;
++                    rest.duration = note.position - cursor;
++                    rest.tone = 60;
++                    rest.lyric = "R";
++                    Write(rest);
++                }
++                Write(note);
++                cursor = note.End;
++            }
++            writer.WriteLine("[#TRACKEND]");
++            return sequence;
++        }
++
++        private static UPitch BuildTunedPitch(UNote note, float[][] data) {
++            if (data.Length > 10000 || data.Any(p => p.Length != 2 || !float.IsFinite(p[0]) || !float.IsFinite(p[1]))) {
++                throw new InvalidDataException("Invalid EnuPitch control points.");
++            }
++            var pitch = new UPitch { snapFirst = false, data = data.Select(p => new PitchPoint(p[0], p[1])).ToList(),
++                techniques = note.pitch.techniques?.Clone() };
++            if (pitch.techniques is { } state) {
++                state.original = pitch.data.Select(p => p.Clone()).ToList();
++                state.applied = pitch.data.Select(p => p.Clone()).ToList();
++                state.originalSnapFirst = false;
++                string? active = new[] { "scoop", "fall", "hammer", "pull", "overshoot", "rise" }
++                    .FirstOrDefault(x => VocalTechniques.IsEnabled(pitch, x));
++                if (active != null) { pitch = VocalTechniques.Set(pitch, note.DurationMs, active, true); }
++            }
++            return pitch;
++        }
++
++        private static async Task RunTuningProcess(string[] args, CancellationToken token) {
++            var script = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "Resources", "AutoTuning", "run.sh"));
++            if (!File.Exists(script)) { throw new FileNotFoundException(TuneText("resources")); }
++            var info = new ProcessStartInfo("/bin/sh") {
++                UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
++            };
++            info.ArgumentList.Add(script);
++            foreach (var arg in args) { info.ArgumentList.Add(arg); }
++            using var process = Process.Start(info) ?? throw new InvalidOperationException("Cannot start tuner.");
++            var stdout = process.StandardOutput.ReadToEndAsync();
++            var stderr = process.StandardError.ReadToEndAsync();
++            try {
++                await process.WaitForExitAsync(token);
++                token.ThrowIfCancellationRequested();
++            } catch (OperationCanceledException) {
++                if (!process.HasExited) { process.Kill(true); }
++                await process.WaitForExitAsync();
++                throw;
++            }
++            if (process.ExitCode == 78 && args[0] == "apw") {
++                throw new InvalidOperationException(TuneText("rosetta"));
++            }
++            if (process.ExitCode != 0) {
++                var detail = (await stderr) + "\n" + (await stdout);
++                throw new InvalidOperationException(TuneText("failed") + "\n" + detail[^Math.Min(detail.Length, 4000)..]);
++            }
++        }
++    }
++}
+diff --git a/OpenUtau.Test/App/AutoTuningTest.cs b/OpenUtau.Test/App/AutoTuningTest.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau.Test/App/AutoTuningTest.cs
+@@ -0,0 +1,68 @@
++using System.IO;
++using System.Reflection;
++using System.Text;
++using OpenUtau.App.Controls;
++using OpenUtau.Core;
++using OpenUtau.Core.Ustx;
++using Xunit;
++
++namespace OpenUtau.App {
++    public class AutoTuningTest {
++        private const BindingFlags PrivateStatic = BindingFlags.Static | BindingFlags.NonPublic;
++
++        [Fact]
++        public void EnuSelectionIncludesLeadingAndInteriorRestsWithoutEditingNotes() {
++            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
++            var project = new UProject();
++            project.timeAxis.BuildSegments(project);
++            var part = new UVoicePart();
++            var a = UNote.Create();
++            a.position = 240; a.duration = 240; a.tone = 60; a.lyric = "きゃ";
++            var b = UNote.Create();
++            b.position = 720; b.duration = 240; b.tone = 64; b.lyric = "う";
++            var temp = Directory.CreateTempSubdirectory();
++            try {
++                var path = Path.Combine(temp.FullName, "selection.tmp");
++                typeof(PianoRoll).GetMethod("WriteEnuSelection", PrivateStatic)!
++                    .Invoke(null, new object[] { path, project, part, new[] { a, b }, 0 });
++                var content = File.ReadAllText(path, Encoding.GetEncoding(932));
++                Assert.Contains("[#0000]\nLength=240\nLyric=R", content);
++                Assert.Contains("[#0001]\nLength=240\nLyric=きゃ\nNoteNum=60", content);
++                Assert.Contains("[#0002]\nLength=240\nLyric=R", content);
++                Assert.Contains("[#0003]\nLength=240\nLyric=う\nNoteNum=64", content);
++                Assert.Equal(240, a.position);
++                Assert.Equal(720, b.position);
++            } finally {
++                temp.Delete(true);
++            }
++        }
++
++        [Fact]
++        public void EnuPitchEditRetainsGainAndTechniqueAndCanBeUndone() {
++            var note = UNote.Create();
++            note.position = 0; note.duration = 480; note.tone = 64; note.lyric = "あ";
++            note.PositionMs = 0; note.EndMs = 500;
++            note.noteGain = 53;
++            note.pitch.AddPoint(new PitchPoint(-25, 0));
++            note.pitch.AddPoint(new PitchPoint(40, 0));
++            note.pitch = VocalTechniques.Set(note.pitch, note.DurationMs, "fall", true);
++            var before = note.pitch;
++            var points = new[] { new[] { -5f, -2f }, new[] { 50f, 1f }, new[] { 490f, 0f } };
++            var tuned = (UPitch)typeof(PianoRoll).GetMethod("BuildTunedPitch", PrivateStatic)!
++                .Invoke(null, new object[] { note, points })!;
++            var command = new SetPitchPointsCommand(new UVoicePart(), note, tuned);
++            command.Execute();
++            Assert.Equal(53, note.noteGain);
++            Assert.Equal(64, note.tone);
++            Assert.Equal(480, note.duration);
++            Assert.Equal("あ", note.lyric);
++            Assert.True(VocalTechniques.IsEnabled(note.pitch, "fall"));
++            Assert.Equal(-5, note.pitch.techniques!.original[0].X);
++            var off = VocalTechniques.Set(note.pitch, note.DurationMs, "fall", false);
++            Assert.Equal(3, off.data.Count);
++            Assert.Equal(50, off.data[1].X);
++            command.Unexecute();
++            Assert.Same(before, note.pitch);
++        }
++    }
++}

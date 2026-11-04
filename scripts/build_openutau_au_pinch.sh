@@ -25,7 +25,8 @@ test "$official_hash" = 4e0d79277bd042561ada984b177d9c65f35703b6890c923a19e335db
 test "$official_hash" = 1b3fa0bf68160970f6f83d3233efdca52269538ff7c9780cedb0688de3125875 || \
 test "$official_hash" = 622343e85d8728445b990ce4053b1883f471f25d263f8b0f82340151614b5451 || \
 test "$official_hash" = e44e2c12cf4686668a06153d4d191397a935b1598fed50bda9161aadb6d42e6c || \
-test "$official_hash" = 721d280152da239995f4b5fcee4f734ae7ab31de2c4c358d8d5e3dfcf0c8a147 || {
+test "$official_hash" = 721d280152da239995f4b5fcee4f734ae7ab31de2c4c358d8d5e3dfcf0c8a147 || \
+test "$official_hash" = 7e02c12ad8746464dc44ab1bd84b3644d0d4835fc88c68a8c3c4d97392f3b20c || {
     echo 'Expected official or current OpenUtau AU 0.1.576 app.' >&2
     exit 1
 }
@@ -109,6 +110,14 @@ elif ! git -C "$source_dir" apply --reverse --check "$track_pinch_patch" 2>/dev/
     exit 1
 fi
 
+autotune_patch="$repo/patches/openutau-autotuning-0.1.576.patch"
+if git -C "$source_dir" apply --check "$autotune_patch" 2>/dev/null; then
+    git -C "$source_dir" apply "$autotune_patch"
+elif ! git -C "$source_dir" apply --reverse --check "$autotune_patch" 2>/dev/null; then
+    echo 'Source differs from the expected automatic tuning patch state.' >&2
+    exit 1
+fi
+
 # Keep the bundled XML signature implementation on the fixed NuGet line.
 # The official 0.1.576 source resolves 10.0.11, which is affected by the
 # current NuGet advisories; apply this reproducible build-time override after
@@ -137,6 +146,7 @@ clang -dynamiclib -fobjc-arc -fblocks -framework AppKit -arch arm64 -mmacosx-ver
     "$repo/native/openutau_pinch_axis.m" \
     -o "$output_app/Contents/MacOS/libOpenUtauPinchAxis.dylib"
 python3 "$repo/scripts/configure_macos_documents.py" "$output_app"
+"$repo/scripts/stage_macos_autotuning.sh" "$output_app"
 clang -fobjc-arc -framework AppKit -framework CoreServices -arch arm64 -mmacosx-version-min=12.0 \
     "$repo/native/openutau_file_associations.m" -o "$output_app/Contents/MacOS/openutau-register-files"
 codesign --force --deep --sign - "$output_app"
