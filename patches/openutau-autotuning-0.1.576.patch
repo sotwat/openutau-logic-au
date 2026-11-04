@@ -15,7 +15,7 @@ diff --git a/OpenUtau/Controls/PianoRoll.axaml b/OpenUtau/Controls/PianoRoll.axa
 diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 --- a/OpenUtau/Strings/Strings.axaml
 +++ b/OpenUtau/Strings/Strings.axaml
-@@ -618,6 +618,76 @@
+@@ -618,6 +618,77 @@
    <system:String x:Key="phoneticassistant.copy">Copy</system:String>
  
    <system:String x:Key="pianoroll.key">Key (for scale degree display)</system:String>
@@ -71,7 +71,8 @@ diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 +  <system:String x:Key="pianoroll.autotune.curve.43">Very shallow dip</system:String>
 +  <system:String x:Key="pianoroll.autotune.curve.44">Low entry, slight overshoot and return</system:String>
 +  <system:String x:Key="pianoroll.autotune.curve.45">High return, rebound and short dip</system:String>
-+  <system:String x:Key="pianoroll.autotune.curvetimehelp">Time (ms): first point from note start, then intervals  ·  Pitch (cents)</system:String>
++  <system:String x:Key="pianoroll.autotune.timecolumn">Time (ms)</system:String>
++  <system:String x:Key="pianoroll.autotune.pitchcolumn">Pitch (cents)</system:String>
 +  <system:String x:Key="pianoroll.autotune.curvestart">Point {0}: start time (ms)</system:String>
 +  <system:String x:Key="pianoroll.autotune.curveinterval">Point {0}: interval (ms)</system:String>
 +  <system:String x:Key="pianoroll.autotune.curvepitch">Point {0}: pitch (cents)</system:String>
@@ -95,7 +96,7 @@ diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 diff --git a/OpenUtau/Strings/Strings.ja-JP.axaml b/OpenUtau/Strings/Strings.ja-JP.axaml
 --- a/OpenUtau/Strings/Strings.ja-JP.axaml
 +++ b/OpenUtau/Strings/Strings.ja-JP.axaml
-@@ -460,6 +460,76 @@
+@@ -460,6 +460,77 @@
    <system:String x:Key="phoneticassistant.copy">コピー</system:String>
  
    <system:String x:Key="pianoroll.key">キー（スケール表示）</system:String>
@@ -151,7 +152,8 @@ diff --git a/OpenUtau/Strings/Strings.ja-JP.axaml b/OpenUtau/Strings/Strings.ja-
 +  <system:String x:Key="pianoroll.autotune.curve.43">ごく浅く下にへこむ</system:String>
 +  <system:String x:Key="pianoroll.autotune.curve.44">下から上に越えて戻る</system:String>
 +  <system:String x:Key="pianoroll.autotune.curve.45">上から戻り、高く跳ねて短く沈む</system:String>
-+  <system:String x:Key="pianoroll.autotune.curvetimehelp">時間（ms）：先頭は音符の開始から、以降は前の点から　｜　音程（セント）</system:String>
++  <system:String x:Key="pianoroll.autotune.timecolumn">時間（ms）</system:String>
++  <system:String x:Key="pianoroll.autotune.pitchcolumn">音程（セント）</system:String>
 +  <system:String x:Key="pianoroll.autotune.curvestart">点{0}：開始位置（ms）</system:String>
 +  <system:String x:Key="pianoroll.autotune.curveinterval">点{0}：前の点からの時間（ms）</system:String>
 +  <system:String x:Key="pianoroll.autotune.curvepitch">点{0}：音程（セント）</system:String>
@@ -461,7 +463,7 @@ diff --git a/OpenUtau/Controls/PianoRoll.AutoPitchwriter.cs b/OpenUtau/Controls/
 new file mode 100644
 --- /dev/null
 +++ b/OpenUtau/Controls/PianoRoll.AutoPitchwriter.cs
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,159 @@
 +using System;
 +using System.Collections.Generic;
 +using System.Globalization;
@@ -474,6 +476,7 @@ new file mode 100644
 +using Avalonia.Automation;
 +using Avalonia.Controls;
 +using Avalonia.Layout;
++using Avalonia.Styling;
 +
 +namespace OpenUtau.App.Controls {
 +    public partial class PianoRoll {
@@ -538,16 +541,34 @@ new file mode 100644
 +                Title = "AutoPitchwriter", Width = 455, SizeToContent = SizeToContent.Height,
 +                CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner,
 +            };
++            window.Styles.Add(new Style(x => x.OfType<NumericUpDown>().Template().OfType<TextBox>()) {
++                Setters = {
++                    new Setter(TextBox.HeightProperty, double.NaN),
++                    new Setter(TextBox.MinHeightProperty, 30d),
++                    new Setter(TextBox.MarginProperty, new Thickness(0)),
++                    new Setter(TextBox.PaddingProperty, new Thickness(8, 3)),
++                    new Setter(TextBox.VerticalAlignmentProperty, VerticalAlignment.Stretch),
++                    new Setter(TextBox.VerticalContentAlignmentProperty, VerticalAlignment.Center),
++                },
++            });
++            Grid CurveRow() => new Grid { ColumnDefinitions = new ColumnDefinitions("30,*,*"), ColumnSpacing = 8 };
 +            void ShowCandidate() {
 +                if (picker.SelectedIndex < 0) { return; }
 +                var template = templates[picker.SelectedIndex];
 +                var points = edits.TryGetValue(template.Id, out var existing)
 +                    ? existing : (TemplatePoint[])template.Points.Clone();
 +                rows.Children.Clear();
-+                rows.Children.Add(new TextBlock { Text = TuneText("curvetimehelp"), TextWrapping = Avalonia.Media.TextWrapping.Wrap });
++                var header = CurveRow();
++                var timeHeader = new TextBlock { Text = TuneText("timecolumn") };
++                var pitchHeader = new TextBlock { Text = TuneText("pitchcolumn") };
++                Grid.SetColumn(timeHeader, 1);
++                Grid.SetColumn(pitchHeader, 2);
++                header.Children.Add(timeHeader);
++                header.Children.Add(pitchHeader);
++                rows.Children.Add(header);
 +                for (int i = 0; i < points.Length; i++) {
 +                    int index = i;
-+                    var row = new Grid { ColumnDefinitions = new ColumnDefinitions("30,*,*"), ColumnSpacing = 8 };
++                    var row = CurveRow();
 +                    var number = new TextBlock { Text = (i + 1).ToString(), VerticalAlignment = VerticalAlignment.Center };
 +                    var time = new NumericUpDown {
 +                        Minimum = i == 0 ? -3000 : 1, Maximum = 3000, Value = points[i].Time,
@@ -558,6 +579,7 @@ new file mode 100644
 +                        Increment = 1, FormatString = "0.######",
 +                    };
 +                    AutomationProperties.SetName(time, string.Format(TuneText(i == 0 ? "curvestart" : "curveinterval"), i + 1));
++                    ToolTip.SetTip(time, string.Format(TuneText(i == 0 ? "curvestart" : "curveinterval"), i + 1));
 +                    AutomationProperties.SetName(pitch, string.Format(TuneText("curvepitch"), i + 1));
 +                    time.ValueChanged += (_, _) => {
 +                        if (time.Value is decimal value) {
