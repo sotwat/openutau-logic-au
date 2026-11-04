@@ -15,7 +15,7 @@ diff --git a/OpenUtau/Controls/PianoRoll.axaml b/OpenUtau/Controls/PianoRoll.axa
 diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 --- a/OpenUtau/Strings/Strings.axaml
 +++ b/OpenUtau/Strings/Strings.axaml
-@@ -618,6 +618,24 @@
+@@ -618,6 +618,31 @@
    <system:String x:Key="phoneticassistant.copy">Copy</system:String>
  
    <system:String x:Key="pianoroll.key">Key (for scale degree display)</system:String>
@@ -24,6 +24,13 @@ diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 +  <system:String x:Key="pianoroll.autotune.style">Singing style</system:String>
 +  <system:String x:Key="pianoroll.autotune.shift">Style shift (semitones)</system:String>
 +  <system:String x:Key="pianoroll.autotune.run">Generate pitch</system:String>
++  <system:String x:Key="pianoroll.autotune.candidates">Curve templates ({0})</system:String>
++  <system:String x:Key="pianoroll.autotune.candidate">No. {0} ({1} points)</system:String>
++  <system:String x:Key="pianoroll.autotune.curvetimehelp">Time (ms): first point from note start, then intervals  ·  Pitch (cents)</system:String>
++  <system:String x:Key="pianoroll.autotune.curvestart">Point {0}: start time (ms)</system:String>
++  <system:String x:Key="pianoroll.autotune.curveinterval">Point {0}: interval (ms)</system:String>
++  <system:String x:Key="pianoroll.autotune.curvepitch">Point {0}: pitch (cents)</system:String>
++  <system:String x:Key="pianoroll.autotune.resetcurve">Reset this template</system:String>
 +  <system:String x:Key="pianoroll.autotune.warning">AutoPitchwriter recreates the notes in this range. OpenUtau AU note volumes and vocal technique settings will be lost. You can undo this operation. Continue?</system:String>
 +  <system:String x:Key="pianoroll.autotune.range">Select consecutive, non-overlapping notes.</system:String>
 +  <system:String x:Key="pianoroll.autotune.enumeter">EnuPitch supports a single 3/4, 4/4 or 6/8 meter per selection.</system:String>
@@ -43,7 +50,7 @@ diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 diff --git a/OpenUtau/Strings/Strings.ja-JP.axaml b/OpenUtau/Strings/Strings.ja-JP.axaml
 --- a/OpenUtau/Strings/Strings.ja-JP.axaml
 +++ b/OpenUtau/Strings/Strings.ja-JP.axaml
-@@ -460,6 +460,24 @@
+@@ -460,6 +460,31 @@
    <system:String x:Key="phoneticassistant.copy">コピー</system:String>
  
    <system:String x:Key="pianoroll.key">キー（スケール表示）</system:String>
@@ -52,6 +59,13 @@ diff --git a/OpenUtau/Strings/Strings.ja-JP.axaml b/OpenUtau/Strings/Strings.ja-
 +  <system:String x:Key="pianoroll.autotune.style">歌唱スタイル</system:String>
 +  <system:String x:Key="pianoroll.autotune.shift">スタイルシフト（半音）</system:String>
 +  <system:String x:Key="pianoroll.autotune.run">ピッチを生成</system:String>
++  <system:String x:Key="pianoroll.autotune.candidates">カーブ候補（全{0}種類）</system:String>
++  <system:String x:Key="pianoroll.autotune.candidate">候補 {0}（{1}点）</system:String>
++  <system:String x:Key="pianoroll.autotune.curvetimehelp">時間（ms）：先頭は音符の開始から、以降は前の点から　｜　音程（セント）</system:String>
++  <system:String x:Key="pianoroll.autotune.curvestart">点{0}：開始位置（ms）</system:String>
++  <system:String x:Key="pianoroll.autotune.curveinterval">点{0}：前の点からの時間（ms）</system:String>
++  <system:String x:Key="pianoroll.autotune.curvepitch">点{0}：音程（セント）</system:String>
++  <system:String x:Key="pianoroll.autotune.resetcurve">この候補を初期値に戻す</system:String>
 +  <system:String x:Key="pianoroll.autotune.warning">AutoPitchwriterは対象範囲のノートを作り直します。OpenUtau AUのノート音量と歌唱テクニックの設定は失われます。実行後は「元に戻す」で取り消せます。実行しますか？</system:String>
 +  <system:String x:Key="pianoroll.autotune.range">重なりのない連続したノートを選択してください。</system:String>
 +  <system:String x:Key="pianoroll.autotune.enumeter">EnuPitchは3/4、4/4、6/8に対応します。拍子が変わる場合は区間を分けて選択してください。</system:String>
@@ -72,7 +86,7 @@ diff --git a/OpenUtau/Controls/PianoRoll.AutoTuning.cs b/OpenUtau/Controls/Piano
 new file mode 100644
 --- /dev/null
 +++ b/OpenUtau/Controls/PianoRoll.AutoTuning.cs
-@@ -0,0 +1,267 @@
+@@ -0,0 +1,280 @@
 +using System;
 +using System.Collections.Generic;
 +using System.Diagnostics;
@@ -179,9 +193,6 @@ new file mode 100644
 +                    }
 +                    options = await ChooseTuningOptions(parent);
 +                    if (options == null) { return; }
-+                } else if (await MessageBox.Show(parent, TuneText("warning"), name,
-+                    MessageBox.MessageBoxButtons.YesNo) != MessageBox.MessageBoxResult.Yes) {
-+                    return;
 +                }
 +
 +                var notes = part.notes.Select(n => (n, n.position, n.duration, n.tone, n.lyric, n.pitch)).ToArray();
@@ -189,14 +200,28 @@ new file mode 100644
 +                try {
 +                    string input = Path.Combine(temp.FullName, "selection.tmp");
 +                    string output = Path.Combine(temp.FullName, "pitch.json");
++                    var data = Path.Combine(PathManager.Inst.DataPath, "AutoTuning");
++                    var templatePath = Path.Combine(temp.FullName, "pitch.ust");
++                    Dictionary<int, TemplatePoint[]>? edits = null;
++                    if (!enu) {
++                        await MessageBox.ShowProcessing(parent, TuneText("running"), name,
++                            (dialog, token) => RunTuningProcess(
++                                new[] { "apw-prepare", data, templatePath }, dialog.SetText, token).GetAwaiter().GetResult());
++                        var blocks = Regex.Split(File.ReadAllText(templatePath, Encoding.GetEncoding(932)), @"(?m)(?=^\[#)");
++                        var templates = ReadCurveTemplates(blocks);
++                        if (templates.Count != 45) { throw new InvalidDataException("Invalid AutoPitchwriter templates."); }
++                        edits = await ChooseCurveTemplates(parent, templates);
++                        if (edits == null || await MessageBox.Show(parent, TuneText("warning"), name,
++                            MessageBox.MessageBoxButtons.YesNo) != MessageBox.MessageBoxResult.Yes) { return; }
++                        WriteCurveTemplates(blocks, templates, edits, templatePath);
++                    }
 +                    var sequence = enu ? WriteEnuSelection(input, project, part, selected, barStart)
 +                        : Ust.WritePlugin(project, part, first, last, input);
 +                    var before = File.ReadAllBytes(input);
-+                    var data = Path.Combine(PathManager.Inst.DataPath, "AutoTuning");
 +                    var args = enu ? new[] { "enu", data, "--input", input, "--output", output, "--meter", meter,
 +                        "--loudness", options!.Strength, "--style", options.Style,
 +                        "--shift", options.Shift.ToString(CultureInfo.InvariantCulture) }
-+                        : new[] { "apw", data, input };
++                        : new[] { "apw-custom", data, input, templatePath };
 +                    await MessageBox.ShowProcessing(parent, TuneText("running"), name,
 +                        (dialog, token) => RunTuningProcess(args, dialog.SetText, token).GetAwaiter().GetResult());
 +                    if (!ReferenceEquals(vm.Project, project) || !project.parts.Contains(part) ||
@@ -222,6 +247,8 @@ new file mode 100644
 +                        DocManager.Inst.ExecuteCmd(new RemoveNoteCommand(part, remove));
 +                        DocManager.Inst.ExecuteCmd(new AddNoteCommand(part, add));
 +                        DocManager.Inst.EndUndoGroup();
++                        curveEdits.Clear();
++                        foreach (var edit in edits!) { curveEdits.Add(edit.Key, edit.Value); }
 +                    }
 +                } finally {
 +                    temp.Delete(true);
@@ -340,13 +367,158 @@ new file mode 100644
 +        }
 +    }
 +}
+diff --git a/OpenUtau/Controls/PianoRoll.AutoPitchwriter.cs b/OpenUtau/Controls/PianoRoll.AutoPitchwriter.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau/Controls/PianoRoll.AutoPitchwriter.cs
+@@ -0,0 +1,138 @@
++using System;
++using System.Collections.Generic;
++using System.Globalization;
++using System.IO;
++using System.Linq;
++using System.Text;
++using System.Text.RegularExpressions;
++using System.Threading.Tasks;
++using Avalonia;
++using Avalonia.Automation;
++using Avalonia.Controls;
++using Avalonia.Layout;
++
++namespace OpenUtau.App.Controls {
++    public partial class PianoRoll {
++        private record TemplatePoint(decimal Time, decimal Cents);
++        private record CurveTemplate(int Id, int Block, TemplatePoint[] Points);
++        private readonly Dictionary<int, TemplatePoint[]> curveEdits = new();
++
++        private static List<CurveTemplate> ReadCurveTemplates(string[] blocks) {
++            decimal Number(string value) => string.IsNullOrWhiteSpace(value) ? 0 :
++                decimal.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture);
++            var templates = new List<CurveTemplate>();
++            for (int i = 0; i < blocks.Length; i++) {
++                string Field(string key) => Regex.Match(blocks[i], $"(?m)^{key}=([^\\r\\n]*)").Groups[1].Value;
++                var start = Field("PBS");
++                if (start.Length == 0 || !int.TryParse(Field("Lyric"), out int id)) { continue; }
++                var pbs = start.Split(';');
++                var widths = Field("PBW").Split(',');
++                var offsets = Field("PBY").Split(',');
++                var points = new TemplatePoint[widths.Length + 1];
++                points[0] = new TemplatePoint(Number(pbs[0]), pbs.Length > 1 ? 10 * Number(pbs[1]) : 0);
++                for (int j = 0; j < widths.Length; j++) {
++                    points[j + 1] = new TemplatePoint(Number(widths[j]), j < offsets.Length ? 10 * Number(offsets[j]) : 0);
++                }
++                templates.Add(new CurveTemplate(id, i, points));
++            }
++            return templates.OrderBy(t => t.Id).ToList();
++        }
++
++        private static void WriteCurveTemplates(string[] blocks, List<CurveTemplate> templates,
++            Dictionary<int, TemplatePoint[]> edits, string path) {
++            string F(decimal value) => value.ToString("0.######", CultureInfo.InvariantCulture);
++            var output = (string[])blocks.Clone();
++            foreach (var template in templates) {
++                if (!edits.TryGetValue(template.Id, out var points) || points.SequenceEqual(template.Points)) { continue; }
++                var block = Regex.Replace(blocks[template.Block], @"(?m)^(PBS|PBW|PBY)=[^\r\n]*\r?\n", "");
++                int newline = block.IndexOf('\n') + 1;
++                block = block.Insert(newline, $"PBS={F(points[0].Time)};{F(points[0].Cents / 10)}\r\n" +
++                    $"PBW={string.Join(",", points.Skip(1).Select(p => F(p.Time)))}\r\n" +
++                    $"PBY={string.Join(",", points.Skip(1).Select(p => F(p.Cents / 10)))}\r\n");
++                output[template.Block] = block;
++            }
++            File.WriteAllText(path, string.Concat(output), Encoding.GetEncoding(932));
++        }
++
++        private Task<Dictionary<int, TemplatePoint[]>?> ChooseCurveTemplates(Window parent, List<CurveTemplate> templates) {
++            var edits = curveEdits.ToDictionary(x => x.Key, x => (TemplatePoint[])x.Value.Clone());
++            var picker = new ComboBox {
++                ItemsSource = templates.Select(t => string.Format(TuneText("candidate"), t.Id, t.Points.Length)).ToArray(),
++                SelectedIndex = 0,
++                HorizontalAlignment = HorizontalAlignment.Stretch,
++            };
++            var rows = new StackPanel { Spacing = 5 };
++            var reset = new Button { Content = TuneText("resetcurve") };
++            var body = new StackPanel { Spacing = 8, Margin = new Thickness(18) };
++            body.Children.Add(new Label { Content = string.Format(TuneText("candidates"), templates.Count), Target = picker });
++            body.Children.Add(picker);
++            body.Children.Add(rows);
++            body.Children.Add(reset);
++
++            var window = new Window {
++                Title = "AutoPitchwriter", Width = 455, SizeToContent = SizeToContent.Height,
++                CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner,
++            };
++            void ShowCandidate() {
++                if (picker.SelectedIndex < 0) { return; }
++                var template = templates[picker.SelectedIndex];
++                var points = edits.TryGetValue(template.Id, out var existing)
++                    ? existing : (TemplatePoint[])template.Points.Clone();
++                rows.Children.Clear();
++                rows.Children.Add(new TextBlock { Text = TuneText("curvetimehelp"), TextWrapping = Avalonia.Media.TextWrapping.Wrap });
++                for (int i = 0; i < points.Length; i++) {
++                    int index = i;
++                    var row = new Grid { ColumnDefinitions = new ColumnDefinitions("30,*,*"), ColumnSpacing = 8 };
++                    var number = new TextBlock { Text = (i + 1).ToString(), VerticalAlignment = VerticalAlignment.Center };
++                    var time = new NumericUpDown {
++                        Minimum = i == 0 ? -3000 : 1, Maximum = 3000, Value = points[i].Time,
++                        Increment = 1, FormatString = "0.######",
++                    };
++                    var pitch = new NumericUpDown {
++                        Minimum = -2400, Maximum = 2400, Value = points[i].Cents,
++                        Increment = 1, FormatString = "0.######",
++                    };
++                    AutomationProperties.SetName(time, string.Format(TuneText(i == 0 ? "curvestart" : "curveinterval"), i + 1));
++                    AutomationProperties.SetName(pitch, string.Format(TuneText("curvepitch"), i + 1));
++                    time.ValueChanged += (_, _) => {
++                        if (time.Value is decimal value) {
++                            points[index] = points[index] with { Time = value };
++                            edits[template.Id] = points;
++                        }
++                    };
++                    pitch.ValueChanged += (_, _) => {
++                        if (pitch.Value is decimal value) {
++                            points[index] = points[index] with { Cents = value };
++                            edits[template.Id] = points;
++                        }
++                    };
++                    Grid.SetColumn(time, 1);
++                    Grid.SetColumn(pitch, 2);
++                    row.Children.Add(number);
++                    row.Children.Add(time);
++                    row.Children.Add(pitch);
++                    rows.Children.Add(row);
++                }
++            }
++            picker.SelectionChanged += (_, _) => ShowCandidate();
++            reset.Click += (_, _) => {
++                edits.Remove(templates[picker.SelectedIndex].Id);
++                ShowCandidate();
++            };
++            var buttons = new StackPanel {
++                Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right,
++            };
++            var cancel = new Button { Content = ThemeManager.GetString("button.cancel"), IsCancel = true };
++            cancel.Click += (_, _) => window.Close(null);
++            var run = new Button { Content = TuneText("run"), IsDefault = true };
++            run.Click += (_, _) => window.Close(edits);
++            buttons.Children.Add(cancel);
++            buttons.Children.Add(run);
++            body.Children.Add(buttons);
++            window.Content = new ScrollViewer { Content = body, MaxHeight = 620 };
++            ShowCandidate();
++            window.Opened += (_, _) => picker.Focus();
++            return window.ShowDialog<Dictionary<int, TemplatePoint[]>?>(parent);
++        }
++    }
++}
 diff --git a/OpenUtau.Test/App/AutoTuningTest.cs b/OpenUtau.Test/App/AutoTuningTest.cs
 new file mode 100644
 --- /dev/null
 +++ b/OpenUtau.Test/App/AutoTuningTest.cs
-@@ -0,0 +1,134 @@
+@@ -0,0 +1,183 @@
 +using System;
 +using System.Diagnostics;
++using System.Collections;
++using System.Text.RegularExpressions;
 +using System.Linq;
 +using System.IO;
 +using System.Reflection;
@@ -360,6 +532,53 @@ new file mode 100644
 +namespace OpenUtau.App {
 +    public class AutoTuningTest {
 +        private const BindingFlags PrivateStatic = BindingFlags.Static | BindingFlags.NonPublic;
++
++        [Fact]
++        public void EditedCurveTemplateReachesNativeAutoPitchwriter() {
++            var resources = Environment.GetEnvironmentVariable("OPENUTAU_TEST_AUTOTUNING");
++            if (string.IsNullOrEmpty(resources)) { return; }
++            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
++            var encoding = Encoding.GetEncoding(932);
++            var temp = Directory.CreateTempSubdirectory();
++            try {
++                var templatePath = Path.Combine(temp.FullName, "pitch.ust");
++                var selection = Path.Combine(temp.FullName, "selection.tmp");
++                void Run(params string[] args) {
++                    var start = new ProcessStartInfo("/bin/sh") { UseShellExecute = false };
++                    start.ArgumentList.Add(Path.Combine(resources, "run.sh"));
++                    start.ArgumentList.Add(args[0]);
++                    start.ArgumentList.Add(Path.Combine(temp.FullName, "data"));
++                    foreach (var arg in args.Skip(1)) { start.ArgumentList.Add(arg); }
++                    using var proc = Process.Start(start)!;
++                    Assert.True(proc.WaitForExit(30000));
++                    Assert.Equal(0, proc.ExitCode);
++                }
++                Run("apw-prepare", templatePath);
++                var blocks = Regex.Split(File.ReadAllText(templatePath, encoding), @"(?m)(?=^\[#)");
++                var reader = typeof(PianoRoll).GetMethod("ReadCurveTemplates", PrivateStatic)!;
++                var writer = typeof(PianoRoll).GetMethod("WriteCurveTemplates", PrivateStatic)!;
++                var templates = (IList)reader.Invoke(null, new object[] { blocks })!;
++                Assert.Equal(45, templates.Count);
++                Array Points(object item) => (Array)item.GetType().GetProperty("Points")!.GetValue(item)!;
++                Assert.Equal(159, templates.Cast<object>().Sum(t => Points(t).Length));
++                var points = (Array)Points(templates[11]!).Clone();
++                var pointType = points.GetType().GetElementType()!;
++                points.SetValue(Activator.CreateInstance(pointType, 123m, -170m), 0);
++                var edits = (IDictionary)Activator.CreateInstance(writer.GetParameters()[2].ParameterType)!;
++                edits.Add(12, points);
++                writer.Invoke(null, new object[] { blocks, templates, edits, templatePath });
++                var changed = Regex.Split(File.ReadAllText(templatePath, encoding), @"(?m)(?=^\[#)");
++                Assert.Single(blocks.Zip(changed).Where(pair => pair.First != pair.Second));
++                var source = "[#SETTING]\nTempo=120\nMode2=True\n" +
++                    string.Concat(new[] { "あ", "い", "う", "え", "お", "か" }.Select((lyric, i) =>
++                        $"[#{i:D4}]\nLength=240\nLyric={lyric}\nNoteNum={60 + i}\nVelocity=100\n"));
++                File.WriteAllText(selection, source, encoding);
++                Run("apw-custom", selection, templatePath);
++                Assert.Contains("PBS=123;-17", File.ReadAllText(selection, encoding));
++            } finally {
++                temp.Delete(true);
++            }
++        }
 +
 +        [Fact]
 +        public void AutoPitchwriterFirstPointSurvivesNoteValidation() {

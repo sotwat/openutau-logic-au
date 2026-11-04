@@ -48,9 +48,8 @@ case "$mode" in
         export OMP_NUM_THREADS=2 VECLIB_MAXIMUM_THREADS=2 OPENBLAS_NUM_THREADS=2
         "$runtime/bin/python" -u "$resources/enu.py" "$runtime/EnuPitch-0.2.0" "$@"
         ;;
-    apw)
-        # A process started before the bundle update still passes an unused Wine path.
-        if [ "$#" -eq 2 ]; then shift; fi
+    apw|apw-prepare|apw-custom)
+        if [ "$mode" = apw ] && [ "$#" -eq 2 ]; then shift; fi
         input=$1
         plugin="$data/AutoPitchwriter-1.7.0/AutoPitchwriter"
         if [ ! -f "$plugin/AutoPitchwriter.exe" ]; then
@@ -64,7 +63,16 @@ case "$mode" in
         exe="$plugin/AutoPitchwriter.exe"
         actual=$(/usr/bin/shasum -a 256 "$exe" | /usr/bin/awk '{print $1}')
         test "$actual" = 151c32d478811097b98a0238546ea84669cf4e1f750df8ef1445dd631d4fb189
-        cp "$plugin/pitch.ust" "$plugin/AutoPitchwriter" "$staging/"
+        if [ "$mode" = apw-prepare ]; then
+            cp "$plugin/pitch.ust" "$input"
+            exit 0
+        fi
+        cp "$plugin/AutoPitchwriter" "$staging/"
+        if [ "$mode" = apw-custom ]; then
+            cp "$2" "$staging/pitch.ust"
+        else
+            cp "$plugin/pitch.ust" "$staging/pitch.ust"
+        fi
         LC_ALL=C /usr/bin/awk '{sub(/\r$/, ""); printf "%s\r\n", $0}' "$input" > "$staging/selection.tmp"
         (
             cd "$staging"
