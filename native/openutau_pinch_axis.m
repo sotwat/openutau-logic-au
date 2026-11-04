@@ -15,7 +15,7 @@ static double initialX;
 static double initialY;
 static BOOL hasInitial;
 
-// 0: unknown, 1: horizontal, 2: vertical.
+// -1: awaiting movement, 0: no touch data, 1: horizontal, 2: vertical.
 int ou_pinch_axis(void) { return axis; }
 
 int ou_pinch_classify(double changeX, double changeY) {
@@ -24,6 +24,12 @@ int ou_pinch_classify(double changeX, double changeY) {
     if (x > y * 1.25) return 1;
     if (y > x * 1.25) return 2;
     return 0;
+}
+
+static int lockAxis(int current, double changeX, double changeY) {
+    if (current > 0) return current;
+    int candidate = ou_pinch_classify(changeX, changeY);
+    return candidate ? candidate : -1;
 }
 
 static void observeTouches(NSView *view, NSEvent *event) {
@@ -45,10 +51,9 @@ static void observeTouches(NSView *view, NSEvent *event) {
             firstIdentity = a.identity;
             secondIdentity = b.identity;
             hasInitial = YES;
-            axis = ou_pinch_classify(x, y);
+            axis = -1;
         } else {
-            int candidate = ou_pinch_classify(x - initialX, y - initialY);
-            if (candidate) axis = candidate;
+            axis = lockAxis(axis, x - initialX, y - initialY);
         }
     }
 #ifdef OPENUTAU_PINCH_DEBUG

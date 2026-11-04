@@ -59,6 +59,12 @@ int main(void) {
         assert(ou_pinch_classify(10, 1) == 1);
         assert(ou_pinch_classify(1, 10) == 2);
         assert(ou_pinch_classify(0.1, 0.1) == 0);
+        assert(lockAxis(-1, 0.4, 0.3) == -1);
+        assert(lockAxis(-1, 2, 2) == -1);
+        assert(lockAxis(-1, -6, 1) == 1);
+        assert(lockAxis(-1, 1, -6) == 2);
+        assert(lockAxis(1, 1, 20) == 1);
+        assert(lockAxis(2, 20, 1) == 2);
         puts("PASS: editor touch capture, unchanged AppKit/KVO classes, 100 save panels, pinch axes");
     }
     return 0;

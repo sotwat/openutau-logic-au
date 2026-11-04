@@ -1,0 +1,30 @@
+diff --git a/OpenUtau/Controls/PianoRoll.axaml.cs b/OpenUtau/Controls/PianoRoll.axaml.cs
+--- a/OpenUtau/Controls/PianoRoll.axaml.cs
++++ b/OpenUtau/Controls/PianoRoll.axaml.cs
+@@ -1163,11 +1163,10 @@
+                 Math.Clamp(point.Y / size.Height, 0, 1));
+             var zoom = args.Delta.Y / 2;
+             int axis = pinchAxisAvailable ? ou_pinch_axis() : 0;
+-            if (axis != 2) {
++            if (axis == 2) {
++                ViewModel.NotesViewModel.OnYZoomed(position, zoom);
++            } else if (axis == 1 || axis == 0) {
+                 ViewModel.NotesViewModel.OnXZoomed(position, zoom);
+-            }
+-            if (axis != 1) {
+-                ViewModel.NotesViewModel.OnYZoomed(position, zoom);
+             }
+             LyricBox?.EndEdit();
+             args.Handled = true;
+diff --git a/OpenUtau/ViewModels/TracksViewModel.cs b/OpenUtau/ViewModels/TracksViewModel.cs
+--- a/OpenUtau/ViewModels/TracksViewModel.cs
++++ b/OpenUtau/ViewModels/TracksViewModel.cs
+@@ -195,7 +195,7 @@
+         }
+ 
+         internal void OnTrackpadMagnify(Point position, double magnification, int axis) {
+-            if (axis != 2 && double.IsFinite(magnification) && magnification != 0) {
++            if ((axis == 0 || axis == 1) && double.IsFinite(magnification) && magnification != 0) {
+                 OnXZoomed(position, magnification / 2);
+             }
+         }

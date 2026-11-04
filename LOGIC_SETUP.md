@@ -10,7 +10,7 @@
 
 ## このMacでの配置
 
-- OpenUtau: このMacには `/Applications/OpenUtau AU.app` を導入しています。公式版アプリは本人指定で削除済みです。AU版は公式v0.1.576を元にピアノロールのトラックパッド・ピンチ拡大縮小を追加した改造版です。指を横に広げると時間軸、縦に広げると音程軸を拡大します。タッチ位置が取得できない場合は両軸を拡大します。Logic連携とピンチ操作にはOpenUtau AUを使います。共通設定は`Channel=alpha`、旧設定の`Beta=false`です。
+- OpenUtau: このMacには `/Applications/OpenUtau AU.app` を導入しています。公式版アプリは本人指定で削除済みです。AU版は公式v0.1.576を元にピアノロールのトラックパッド・ピンチ拡大縮小を追加した改造版です。指を横に広げると時間軸、縦に広げると音程軸を拡大します。軸が判定できるまではズームを保留し、一度判定した軸は指を離すまで維持します。タッチ位置を取得できないときは時間軸のみを拡大縮小します。トラック配置と時間目盛りでは横ピンチで時間軸を拡大縮小します。Logic連携とピンチ操作にはOpenUtau AUを使います。共通設定は`Channel=alpha`、旧設定の`Beta=false`です。
 - AU音源: `~/Library/Audio/Plug-Ins/Components/OpenUtau Bridge.component`。
 - ローカル中継: `~/Library/Application Support/OpenUtau Bridge/openutau-bridge-relay`。ログイン時に起動するLaunchAgentは`~/Library/LaunchAgents/moe.kakaru.openutau-bridge-relay.plist`です。
 - ビルド元: このフォルダ。AU対応と中継のソースは`CMakeLists.txt`、`src/`、`scripts/`にあります。

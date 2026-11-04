@@ -118,6 +118,14 @@ elif ! git -C "$source_dir" apply --reverse --check "$autotune_patch" 2>/dev/nul
     exit 1
 fi
 
+pinch_axis_lock_patch="$repo/patches/openutau-pinch-axis-lock-0.1.576.patch"
+if git -C "$source_dir" apply --check "$pinch_axis_lock_patch" 2>/dev/null; then
+    git -C "$source_dir" apply "$pinch_axis_lock_patch"
+elif ! git -C "$source_dir" apply --reverse --check "$pinch_axis_lock_patch" 2>/dev/null; then
+    echo 'Source differs from the expected pinch axis lock patch state.' >&2
+    exit 1
+fi
+
 # Keep the bundled XML signature implementation on the fixed NuGet line.
 # The official 0.1.576 source resolves 10.0.11, which is affected by the
 # current NuGet advisories; apply this reproducible build-time override after
