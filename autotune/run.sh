@@ -45,6 +45,7 @@ case "$mode" in
             fi
         fi
         export TERM=dumb PYTHONNOUSERSITE=1
+        export OMP_NUM_THREADS=2 VECLIB_MAXIMUM_THREADS=2 OPENBLAS_NUM_THREADS=2
         "$runtime/bin/python" -u "$resources/enu.py" "$runtime/EnuPitch-0.2.0" "$@"
         ;;
     apw)

@@ -15,7 +15,7 @@ diff --git a/OpenUtau/Controls/PianoRoll.axaml b/OpenUtau/Controls/PianoRoll.axa
 diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 --- a/OpenUtau/Strings/Strings.axaml
 +++ b/OpenUtau/Strings/Strings.axaml
-@@ -618,6 +618,22 @@
+@@ -618,6 +618,24 @@
    <system:String x:Key="phoneticassistant.copy">Copy</system:String>
  
    <system:String x:Key="pianoroll.key">Key (for scale degree display)</system:String>
@@ -31,6 +31,8 @@ diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 +  <system:String x:Key="pianoroll.autotune.two">Select at least two sung notes.</system:String>
 +  <system:String x:Key="pianoroll.autotune.tempo">Select a range with a constant tempo.</system:String>
 +  <system:String x:Key="pianoroll.autotune.running">Preparing and running the tuner…</system:String>
++  <system:String x:Key="pianoroll.autotune.progress">Generating pitch: {0}%</system:String>
++  <system:String x:Key="pianoroll.autotune.timeout">The tuner timed out. Select a shorter passage and try again.</system:String>
 +  <system:String x:Key="pianoroll.autotune.changed">The project changed during tuning. No changes were applied.</system:String>
 +  <system:String x:Key="pianoroll.autotune.lyric">Lyrics must not contain line breaks.</system:String>
 +  <system:String x:Key="pianoroll.autotune.resources">The automatic tuning files are missing. Reinstall this version of OpenUtau AU.</system:String>
@@ -41,7 +43,7 @@ diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 diff --git a/OpenUtau/Strings/Strings.ja-JP.axaml b/OpenUtau/Strings/Strings.ja-JP.axaml
 --- a/OpenUtau/Strings/Strings.ja-JP.axaml
 +++ b/OpenUtau/Strings/Strings.ja-JP.axaml
-@@ -460,6 +460,22 @@
+@@ -460,6 +460,24 @@
    <system:String x:Key="phoneticassistant.copy">コピー</system:String>
  
    <system:String x:Key="pianoroll.key">キー（スケール表示）</system:String>
@@ -57,6 +59,8 @@ diff --git a/OpenUtau/Strings/Strings.ja-JP.axaml b/OpenUtau/Strings/Strings.ja-
 +  <system:String x:Key="pianoroll.autotune.two">歌唱ノートを2つ以上選択してください。</system:String>
 +  <system:String x:Key="pianoroll.autotune.tempo">テンポが変わる場合は区間を分けて選択してください。</system:String>
 +  <system:String x:Key="pianoroll.autotune.running">自動調声を実行しています。初回は必要なファイルを取得します。</system:String>
++  <system:String x:Key="pianoroll.autotune.progress">ピッチを生成中：{0}%</system:String>
++  <system:String x:Key="pianoroll.autotune.timeout">処理が制限時間を超えました。短い区間を選び直してください。</system:String>
 +  <system:String x:Key="pianoroll.autotune.changed">実行中に譜面が変わったため、結果を適用しませんでした。</system:String>
 +  <system:String x:Key="pianoroll.autotune.lyric">改行のある歌詞には適用できません。</system:String>
 +  <system:String x:Key="pianoroll.autotune.resources">自動調声のファイルがありません。この版のOpenUtau AUを入れ直してください。</system:String>
@@ -68,7 +72,7 @@ diff --git a/OpenUtau/Controls/PianoRoll.AutoTuning.cs b/OpenUtau/Controls/Piano
 new file mode 100644
 --- /dev/null
 +++ b/OpenUtau/Controls/PianoRoll.AutoTuning.cs
-@@ -0,0 +1,234 @@
+@@ -0,0 +1,267 @@
 +using System;
 +using System.Collections.Generic;
 +using System.Diagnostics;
@@ -77,6 +81,7 @@ new file mode 100644
 +using System.Linq;
 +using System.Text;
 +using System.Text.Json;
++using System.Text.RegularExpressions;
 +using System.Threading;
 +using System.Threading.Tasks;
 +using Avalonia;
@@ -193,7 +198,7 @@ new file mode 100644
 +                        "--shift", options.Shift.ToString(CultureInfo.InvariantCulture) }
 +                        : new[] { "apw", data, input };
 +                    await MessageBox.ShowProcessing(parent, TuneText("running"), name,
-+                        (_, token) => RunTuningProcess(args, token).GetAwaiter().GetResult());
++                        (dialog, token) => RunTuningProcess(args, dialog.SetText, token).GetAwaiter().GetResult());
 +                    if (!ReferenceEquals(vm.Project, project) || !project.parts.Contains(part) ||
 +                        !notes.SequenceEqual(part.notes.Select(n => (n, n.position, n.duration, n.tone, n.lyric, n.pitch)))) {
 +                        throw new InvalidOperationException(TuneText("changed"));
@@ -212,6 +217,7 @@ new file mode 100644
 +                        DocManager.Inst.EndUndoGroup();
 +                    } else if (!before.SequenceEqual(File.ReadAllBytes(input))) {
 +                        var (remove, add) = Ust.ParsePlugin(project, part, first, last, sequence, input);
++                        KeepAutoPitchwriterCurve(add);
 +                        DocManager.Inst.StartUndoGroup("command.batch.plugin");
 +                        DocManager.Inst.ExecuteCmd(new RemoveNoteCommand(part, remove));
 +                        DocManager.Inst.ExecuteCmd(new AddNoteCommand(part, add));
@@ -277,7 +283,15 @@ new file mode 100644
 +            return pitch;
 +        }
 +
-+        private static async Task RunTuningProcess(string[] args, CancellationToken token) {
++        private static void KeepAutoPitchwriterCurve(IEnumerable<UNote> notes) {
++            // UST pitch values are already relative to the note; validation must not replace PBS.Y.
++            foreach (var note in notes) { note.pitch.snapFirst = false; }
++        }
++
++        private static readonly Regex EnuStep = new(@"sample time step:\s*(\d{1,3})%",
++            RegexOptions.CultureInvariant);
++
++        private static async Task RunTuningProcess(string[] args, Action<string> report, CancellationToken token) {
 +            var script = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "Resources", "AutoTuning", "run.sh"));
 +            if (!File.Exists(script)) { throw new FileNotFoundException(TuneText("resources")); }
 +            var info = new ProcessStartInfo("/bin/sh") {
@@ -287,15 +301,38 @@ new file mode 100644
 +            foreach (var arg in args) { info.ArgumentList.Add(arg); }
 +            using var process = Process.Start(info) ?? throw new InvalidOperationException("Cannot start tuner.");
 +            var stdout = process.StandardOutput.ReadToEndAsync();
-+            var stderr = process.StandardError.ReadToEndAsync();
-+            try {
-+                await process.WaitForExitAsync(token);
-+                token.ThrowIfCancellationRequested();
-+            } catch (OperationCanceledException) {
-+                if (!process.HasExited) { process.Kill(true); }
-+                await process.WaitForExitAsync();
-+                throw;
++            async Task<string> ReadErrors() {
++                var tail = new Queue<string>();
++                int lastPercent = -1;
++                while (await process.StandardError.ReadLineAsync() is string line) {
++                    if (tail.Count == 24) { tail.Dequeue(); }
++                    tail.Enqueue(line);
++                    if (args[0] != "enu") { continue; }
++                    var match = EnuStep.Match(line);
++                    if (match.Success && int.TryParse(match.Groups[1].Value, out int percent) &&
++                        percent <= 100 && percent != lastPercent) {
++                        lastPercent = percent;
++                        report(string.Format(TuneText("progress"), percent));
++                    }
++                }
++                return string.Join("\n", tail);
 +            }
++            var stderr = ReadErrors();
++            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
++            deadline.CancelAfter(TimeSpan.FromMinutes(30));
++            try {
++                await process.WaitForExitAsync(deadline.Token);
++                deadline.Token.ThrowIfCancellationRequested();
++            } catch (OperationCanceledException) {
++                try {
++                    if (!process.HasExited) { process.Kill(true); }
++                } catch (InvalidOperationException) when (process.HasExited) { }
++                await process.WaitForExitAsync();
++                await Task.WhenAll(stdout, stderr);
++                token.ThrowIfCancellationRequested();
++                throw new TimeoutException(TuneText("timeout"));
++            }
++            await Task.WhenAll(stdout, stderr);
 +            if (process.ExitCode != 0) {
 +                var detail = (await stderr) + "\n" + (await stdout);
 +                throw new InvalidOperationException(TuneText("failed") + "\n" + detail[^Math.Min(detail.Length, 4000)..]);
@@ -307,7 +344,7 @@ diff --git a/OpenUtau.Test/App/AutoTuningTest.cs b/OpenUtau.Test/App/AutoTuningT
 new file mode 100644
 --- /dev/null
 +++ b/OpenUtau.Test/App/AutoTuningTest.cs
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,134 @@
 +using System;
 +using System.Diagnostics;
 +using System.Linq;
@@ -323,6 +360,25 @@ new file mode 100644
 +namespace OpenUtau.App {
 +    public class AutoTuningTest {
 +        private const BindingFlags PrivateStatic = BindingFlags.Static | BindingFlags.NonPublic;
++
++        [Fact]
++        public void AutoPitchwriterFirstPointSurvivesNoteValidation() {
++            var project = new UProject();
++            project.timeAxis.BuildSegments(project);
++            var track = new UTrack();
++            var part = new UVoicePart();
++            var previous = project.CreateNote();
++            previous.position = 0; previous.duration = 240; previous.tone = 60;
++            var note = project.CreateNote();
++            note.position = 240; note.duration = 240; note.tone = 65;
++            note.Prev = previous;
++            note.pitch.data[0].Y = -12;
++            typeof(PianoRoll).GetMethod("KeepAutoPitchwriterCurve", PrivateStatic)!
++                .Invoke(null, new object[] { new[] { note } });
++            note.Validate(new ValidateOptions(), project, track, part);
++            Assert.False(note.pitch.snapFirst);
++            Assert.Equal(-12, note.pitch.data[0].Y);
++        }
 +
 +        [Fact]
 +        public void NativeAutoPitchwriterRoundTripsSelectedNotes() {

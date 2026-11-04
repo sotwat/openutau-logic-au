@@ -8,6 +8,8 @@ Apple Silicon版のピアノロールで「一括編集 → 自動調声」を�
 
 メニューはアプリに含まれます。必要な外部ファイルは初回に配布元から取得し、固定したSHA-256を確認してから使います。EnuPitchはモデルとMac用Python環境を、AutoPitchwriterは作者のZIPを取得します。アプリへの同梱物はランチャー、ARM64版OpenHSPの実行補助プログラム、EnuPitch用の調整コードと依存パッケージの一部で、第三者のプラグイン本体やモデルは再配布しません。外部ファイルはユーザーのOpenUtauデータ内の `AutoTuning` に置き、既存の音源やプラグインとは分けています。
 
+EnuPitchはノート未選択だとパート全体を推論します。長いパートはCPUで数分以上かかるため、短い区間を選択して試せます。モデルの計算中は進捗率を表示し、キャンセルや30分の制限時間で打ち切った場合は結果を適用しません。
+
 ## EnuPitchの変更点
 
 - スタイル選択にはOpenUtauの画面を使い、選択した値をPythonへ渡します。旧GUIの未接続の値は参照しません。
@@ -23,3 +25,5 @@ Apple Silicon版のピアノロールで「一括編集 → 自動調声」を�
 AutoPitchwriterは、Rosettaが入っていないApple SiliconのMacで、OpenUtauが書き出した日本語歌詞付きのUSTからピッチを生成し、OpenUtauが結果を取り込むところまで検証しました。全ノートと中間の選択範囲の両方で、対象ノートの位置・長さ・音高・歌詞が一致しました。Windows版との全出力の照合は未実施です。
 
 ネイティブ実行用の補助プログラムは `scripts/build_macos_apw.sh` で [OpenHSP](https://github.com/onitama/OpenHSP/tree/3dbb8729dad53ee876fc681696c8fe542698860b) の固定コミットからビルドします。作者のZIPと埋め込みバイトコードの指紋を確認し、Windowsの実行ファイル自体は起動しません。統合テストを実行する際は、アプリの `Contents/Resources/AutoTuning` を `OPENUTAU_TEST_AUTOTUNING` に指定します。公開ZIPは更新していません。
+
+AutoPitchwriterの適用時は、OpenUtauのノート検証による先頭ピッチ点の自動吸着を無効にし、USTから読み込んだ値を維持します。前後で5半音離れたノートを用いて、生成値が検証後も残ることをテストしています。
