@@ -16,6 +16,7 @@ done
 dest="$app/Contents/Resources/AutoTuning"
 mkdir -p "$dest/wheels"
 cp "$repo/autotune/run.sh" "$repo/autotune/enu.py" "$repo/autotune/requirements.txt" "$dest/"
+"$repo/scripts/build_macos_apw.sh" "$dest"
 for wheel in "$@"; do
     found=false
     for f in "$wheel_dir"/"$wheel"-*.whl; do

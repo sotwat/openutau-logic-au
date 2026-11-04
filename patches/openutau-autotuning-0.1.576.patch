@@ -15,7 +15,7 @@ diff --git a/OpenUtau/Controls/PianoRoll.axaml b/OpenUtau/Controls/PianoRoll.axa
 diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 --- a/OpenUtau/Strings/Strings.axaml
 +++ b/OpenUtau/Strings/Strings.axaml
-@@ -618,6 +618,23 @@
+@@ -618,6 +618,22 @@
    <system:String x:Key="phoneticassistant.copy">Copy</system:String>
  
    <system:String x:Key="pianoroll.key">Key (for scale degree display)</system:String>
@@ -34,7 +34,6 @@ diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 +  <system:String x:Key="pianoroll.autotune.changed">The project changed during tuning. No changes were applied.</system:String>
 +  <system:String x:Key="pianoroll.autotune.lyric">Lyrics must not contain line breaks.</system:String>
 +  <system:String x:Key="pianoroll.autotune.resources">The automatic tuning files are missing. Reinstall this version of OpenUtau AU.</system:String>
-+  <system:String x:Key="pianoroll.autotune.rosetta">AutoPitchwriter runs through Wine and requires Rosetta on Apple Silicon. Install Rosetta and try again.</system:String>
 +  <system:String x:Key="pianoroll.autotune.failed">Automatic tuning failed. No changes were applied.</system:String>
    <system:String x:Key="pianoroll.menu.batch">Batch Edits</system:String>
    <system:String x:Key="pianoroll.menu.batch.running">Running batch edit</system:String>
@@ -42,7 +41,7 @@ diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 diff --git a/OpenUtau/Strings/Strings.ja-JP.axaml b/OpenUtau/Strings/Strings.ja-JP.axaml
 --- a/OpenUtau/Strings/Strings.ja-JP.axaml
 +++ b/OpenUtau/Strings/Strings.ja-JP.axaml
-@@ -460,6 +460,23 @@
+@@ -460,6 +460,22 @@
    <system:String x:Key="phoneticassistant.copy">コピー</system:String>
  
    <system:String x:Key="pianoroll.key">キー（スケール表示）</system:String>
@@ -61,7 +60,6 @@ diff --git a/OpenUtau/Strings/Strings.ja-JP.axaml b/OpenUtau/Strings/Strings.ja-
 +  <system:String x:Key="pianoroll.autotune.changed">実行中に譜面が変わったため、結果を適用しませんでした。</system:String>
 +  <system:String x:Key="pianoroll.autotune.lyric">改行のある歌詞には適用できません。</system:String>
 +  <system:String x:Key="pianoroll.autotune.resources">自動調声のファイルがありません。この版のOpenUtau AUを入れ直してください。</system:String>
-+  <system:String x:Key="pianoroll.autotune.rosetta">AutoPitchwriterをApple Siliconで使うにはRosettaが必要です。Rosettaをインストールしてから再実行してください。</system:String>
 +  <system:String x:Key="pianoroll.autotune.failed">自動調声に失敗しました。譜面は変更していません。</system:String>
    <system:String x:Key="pianoroll.menu.batch">一括編集</system:String>
    <system:String x:Key="pianoroll.menu.batch.running">一括編集を実行中</system:String>
@@ -70,7 +68,7 @@ diff --git a/OpenUtau/Controls/PianoRoll.AutoTuning.cs b/OpenUtau/Controls/Piano
 new file mode 100644
 --- /dev/null
 +++ b/OpenUtau/Controls/PianoRoll.AutoTuning.cs
-@@ -0,0 +1,237 @@
+@@ -0,0 +1,234 @@
 +using System;
 +using System.Collections.Generic;
 +using System.Diagnostics;
@@ -193,7 +191,7 @@ new file mode 100644
 +                    var args = enu ? new[] { "enu", data, "--input", input, "--output", output, "--meter", meter,
 +                        "--loudness", options!.Strength, "--style", options.Style,
 +                        "--shift", options.Shift.ToString(CultureInfo.InvariantCulture) }
-+                        : new[] { "apw", data, Preferences.Default.WinePath ?? "", input };
++                        : new[] { "apw", data, input };
 +                    await MessageBox.ShowProcessing(parent, TuneText("running"), name,
 +                        (_, token) => RunTuningProcess(args, token).GetAwaiter().GetResult());
 +                    if (!ReferenceEquals(vm.Project, project) || !project.parts.Contains(part) ||
@@ -298,9 +296,6 @@ new file mode 100644
 +                await process.WaitForExitAsync();
 +                throw;
 +            }
-+            if (process.ExitCode == 78 && args[0] == "apw") {
-+                throw new InvalidOperationException(TuneText("rosetta"));
-+            }
 +            if (process.ExitCode != 0) {
 +                var detail = (await stderr) + "\n" + (await stdout);
 +                throw new InvalidOperationException(TuneText("failed") + "\n" + detail[^Math.Min(detail.Length, 4000)..]);
@@ -312,11 +307,15 @@ diff --git a/OpenUtau.Test/App/AutoTuningTest.cs b/OpenUtau.Test/App/AutoTuningT
 new file mode 100644
 --- /dev/null
 +++ b/OpenUtau.Test/App/AutoTuningTest.cs
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,115 @@
++using System;
++using System.Diagnostics;
++using System.Linq;
 +using System.IO;
 +using System.Reflection;
 +using System.Text;
 +using OpenUtau.App.Controls;
++using OpenUtau.Classic;
 +using OpenUtau.Core;
 +using OpenUtau.Core.Ustx;
 +using Xunit;
@@ -324,6 +323,49 @@ new file mode 100644
 +namespace OpenUtau.App {
 +    public class AutoTuningTest {
 +        private const BindingFlags PrivateStatic = BindingFlags.Static | BindingFlags.NonPublic;
++
++        [Fact]
++        public void NativeAutoPitchwriterRoundTripsSelectedNotes() {
++            var resources = Environment.GetEnvironmentVariable("OPENUTAU_TEST_AUTOTUNING");
++            if (string.IsNullOrEmpty(resources)) { return; }
++            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
++            var project = new UProject();
++            project.tracks.Add(new UTrack());
++            project.timeAxis.BuildSegments(project);
++            var part = new UVoicePart { trackNo = 0 };
++            var lyrics = new[] { "あ", "きゃ", "う", "え", "お", "か" };
++            for (int i = 0; i < lyrics.Length; i++) {
++                var n = project.CreateNote();
++                n.position = i * 240;
++                n.duration = 240;
++                n.tone = 60 + i;
++                n.lyric = lyrics[i];
++                n.Prev = part.notes.LastOrDefault();
++                if (n.Prev != null) { n.Prev.Next = n; }
++                part.notes.Add(n);
++            }
++            var temp = Directory.CreateTempSubdirectory();
++            try {
++                foreach (var (first, last) in new[] { (0, 5), (1, 4) }) {
++                    var input = Path.Combine(temp.FullName, "selection.tmp");
++                    var selected = part.notes.Skip(first).Take(last - first + 1).ToArray();
++                    var sequence = Ust.WritePlugin(project, part, selected[0], selected[^1], input);
++                    var start = new ProcessStartInfo("/bin/sh") { UseShellExecute = false };
++                    foreach (var arg in new[] { Path.Combine(resources, "run.sh"), "apw",
++                        Path.Combine(temp.FullName, "data"), input }) { start.ArgumentList.Add(arg); }
++                    using var process = Process.Start(start)!;
++                    Assert.True(process.WaitForExit(30000));
++                    Assert.Equal(0, process.ExitCode);
++                    var (removed, added) = Ust.ParsePlugin(project, part, selected[0], selected[^1], sequence, input);
++                    Assert.Equal(selected, removed);
++                    Assert.Equal(selected.Select(n => (n.position, n.duration, n.tone, n.lyric)),
++                        added.Select(n => (n.position, n.duration, n.tone, n.lyric)));
++                    Assert.All(added, n => Assert.True(n.pitch.data.Count >= 2));
++                }
++            } finally {
++                temp.Delete(true);
++            }
++        }
 +
 +        [Fact]
 +        public void EnuSelectionIncludesLeadingAndInteriorRestsWithoutEditingNotes() {

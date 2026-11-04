@@ -48,23 +48,9 @@ case "$mode" in
         "$runtime/bin/python" -u "$resources/enu.py" "$runtime/EnuPitch-0.2.0" "$@"
         ;;
     apw)
-        wine=$1
-        input=$2
-        if ! /usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null; then
-            echo 'ROSETTA_REQUIRED' >&2
-            exit 78
-        fi
-        if [ -z "$wine" ]; then
-            wine_root="$data/wine-11.21"
-            wine="$wine_root/Wine Staging.app/Contents/Resources/wine/bin/wine"
-            if [ ! -x "$wine" ]; then
-                download https://github.com/Gcenx/macOS_Wine_builds/releases/download/11.21/wine-staging-11.21-osx64.tar.xz \
-                    "$staging/wine.tar.xz" d7bcd5abf4df27aae397a7898aef074fea4a2e0b51e0a55aa9659517bbf9d452
-                mkdir "$staging/wine"
-                /usr/bin/tar -xf "$staging/wine.tar.xz" -C "$staging/wine"
-                if [ ! -d "$wine_root" ]; then mv "$staging/wine" "$wine_root"; fi
-            fi
-        fi
+        # A process started before the bundle update still passes an unused Wine path.
+        if [ "$#" -eq 2 ]; then shift; fi
+        input=$1
         plugin="$data/AutoPitchwriter-1.7.0/AutoPitchwriter"
         if [ ! -f "$plugin/AutoPitchwriter.exe" ]; then
             download https://canon-voice.com/tools/AutoPitchwriter.zip "$staging/apw.zip" \
@@ -74,10 +60,17 @@ case "$mode" in
                 mv "$staging/apw" "$data/AutoPitchwriter-1.7.0"
             fi
         fi
-        cd "$plugin"
-        export WINEPREFIX="$data/wine-prefix" WINEDLLOVERRIDES='mscoree,mshtml=' LANG=ja_JP.UTF-8 WINEDEBUG=-all
-        windows_input="Z:$(printf '%s' "$input" | /usr/bin/tr '/' '\\')"
-        "$wine" "$plugin/AutoPitchwriter.exe" "$windows_input"
+        exe="$plugin/AutoPitchwriter.exe"
+        actual=$(/usr/bin/shasum -a 256 "$exe" | /usr/bin/awk '{print $1}')
+        test "$actual" = 151c32d478811097b98a0238546ea84669cf4e1f750df8ef1445dd631d4fb189
+        cp "$plugin/pitch.ust" "$plugin/AutoPitchwriter" "$staging/"
+        LC_ALL=C /usr/bin/awk '{sub(/\r$/, ""); printf "%s\r\n", $0}' "$input" > "$staging/selection.tmp"
+        (
+            cd "$staging"
+            "$resources/apw-arm64" "$exe"
+            LC_ALL=C /usr/bin/grep -q '^\[#INSERT\]' selection.tmp
+        )
+        cp "$staging/selection.tmp" "$input"
         ;;
     *) exit 64 ;;
 esac
