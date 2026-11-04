@@ -15,7 +15,7 @@ diff --git a/OpenUtau/Controls/PianoRoll.axaml b/OpenUtau/Controls/PianoRoll.axa
 diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 --- a/OpenUtau/Strings/Strings.axaml
 +++ b/OpenUtau/Strings/Strings.axaml
-@@ -618,6 +618,31 @@
+@@ -618,6 +618,76 @@
    <system:String x:Key="phoneticassistant.copy">Copy</system:String>
  
    <system:String x:Key="pianoroll.key">Key (for scale degree display)</system:String>
@@ -25,7 +25,52 @@ diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 +  <system:String x:Key="pianoroll.autotune.shift">Style shift (semitones)</system:String>
 +  <system:String x:Key="pianoroll.autotune.run">Generate pitch</system:String>
 +  <system:String x:Key="pianoroll.autotune.candidates">Curve templates ({0})</system:String>
-+  <system:String x:Key="pianoroll.autotune.candidate">No. {0} ({1} points)</system:String>
++  <system:String x:Key="pianoroll.autotune.candidate">{0:D2}  {1} ({2} points)</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.1">Low return within note</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.2">High return before note</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.3">Deep dip and return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.4">Low entry with long dip</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.5">Low entry with short dip</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.6">Deep dip with quick return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.7">High entry into deep dip</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.8">High entry into shallow dip</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.9">High entry with long low hold</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.10">Deep dip with long hold</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.11">Short dip with hold</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.12">Low return at note onset</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.13">High entry with short low hold</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.14">High entry with steep drop and hold</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.15">High return within note</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.16">High return just before note</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.17">Delayed low return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.18">Dip with slow return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.19">Flat, short</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.20">Slow high return before note</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.21">High hold followed by dip</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.22">High hold followed by later dip</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.23">Low entry with two-stage return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.24">High crest with quick return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.25">High crest with slow return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.26">High crest just before note</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.27">Large, gradual high return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.28">High hold into deep dip</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.29">Very deep double dip</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.30">Very low entry with quick return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.31">Low entry with latest return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.32">Flat, long</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.33">High return, rebound and long dip</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.34">Highest entry and return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.35">Early high return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.36">Quick high return before note</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.37">Deep low return within note</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.38">Delayed crest and return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.39">Deep dip with drawn-out return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.40">Shallow dip with quick return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.41">Low entry with earlier return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.42">Shallow upward swell</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.43">Very shallow dip</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.44">Low entry, slight overshoot and return</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.45">High return, rebound and short dip</system:String>
 +  <system:String x:Key="pianoroll.autotune.curvetimehelp">Time (ms): first point from note start, then intervals  ·  Pitch (cents)</system:String>
 +  <system:String x:Key="pianoroll.autotune.curvestart">Point {0}: start time (ms)</system:String>
 +  <system:String x:Key="pianoroll.autotune.curveinterval">Point {0}: interval (ms)</system:String>
@@ -50,7 +95,7 @@ diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 diff --git a/OpenUtau/Strings/Strings.ja-JP.axaml b/OpenUtau/Strings/Strings.ja-JP.axaml
 --- a/OpenUtau/Strings/Strings.ja-JP.axaml
 +++ b/OpenUtau/Strings/Strings.ja-JP.axaml
-@@ -460,6 +460,31 @@
+@@ -460,6 +460,76 @@
    <system:String x:Key="phoneticassistant.copy">コピー</system:String>
  
    <system:String x:Key="pianoroll.key">キー（スケール表示）</system:String>
@@ -60,7 +105,52 @@ diff --git a/OpenUtau/Strings/Strings.ja-JP.axaml b/OpenUtau/Strings/Strings.ja-
 +  <system:String x:Key="pianoroll.autotune.shift">スタイルシフト（半音）</system:String>
 +  <system:String x:Key="pianoroll.autotune.run">ピッチを生成</system:String>
 +  <system:String x:Key="pianoroll.autotune.candidates">カーブ候補（全{0}種類）</system:String>
-+  <system:String x:Key="pianoroll.autotune.candidate">候補 {0}（{1}点）</system:String>
++  <system:String x:Key="pianoroll.autotune.candidate">{0:D2}  {1}（{2}点）</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.1">音の途中で下から戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.2">音の前で上から戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.3">深く沈んで戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.4">低く入り、長く沈む</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.5">低く入り、短く沈む</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.6">深く沈んで早く戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.7">高く入って深く沈む</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.8">高く入って浅く沈む</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.9">上から入り、下で長く留まる</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.10">低く沈んで長く留まる</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.11">短く沈んで留まる</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.12">音の出だしで下から戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.13">上から入り、下で短く留まる</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.14">上から大きく落ちて留まる</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.15">音の途中で上から戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.16">音の直前に上から戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.17">音の後半寄りで下から戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.18">沈んでゆっくり戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.19">水平・短い</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.20">音の前で上からゆっくり戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.21">上で留まり、下へ沈む</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.22">上で留まり、遅めに沈む</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.23">低く入り、二段で戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.24">高い山からすばやく戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.25">高い山からゆっくり戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.26">音の直前に高い山</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.27">大きく上からなだらかに戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.28">高く保ってから深く沈む</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.29">大きく沈み直して戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.30">深い低音から一気に戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.31">低く入り、最も遅く戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.32">水平・長い</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.33">上から戻り、高く跳ねて長く沈む</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.34">最も高い位置から戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.35">かなり前で上から戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.36">音の前で上からすばやく戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.37">音の途中で深い低音から戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.38">後から山を作って戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.39">深く沈んで長く引く</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.40">浅く沈んで早く戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.41">低く入り、早めに沈んで戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.42">浅く上にふくらむ</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.43">ごく浅く下にへこむ</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.44">下から上に越えて戻る</system:String>
++  <system:String x:Key="pianoroll.autotune.curve.45">上から戻り、高く跳ねて短く沈む</system:String>
 +  <system:String x:Key="pianoroll.autotune.curvetimehelp">時間（ms）：先頭は音符の開始から、以降は前の点から　｜　音程（セント）</system:String>
 +  <system:String x:Key="pianoroll.autotune.curvestart">点{0}：開始位置（ms）</system:String>
 +  <system:String x:Key="pianoroll.autotune.curveinterval">点{0}：前の点からの時間（ms）</system:String>
@@ -371,7 +461,7 @@ diff --git a/OpenUtau/Controls/PianoRoll.AutoPitchwriter.cs b/OpenUtau/Controls/
 new file mode 100644
 --- /dev/null
 +++ b/OpenUtau/Controls/PianoRoll.AutoPitchwriter.cs
-@@ -0,0 +1,138 @@
+@@ -0,0 +1,139 @@
 +using System;
 +using System.Collections.Generic;
 +using System.Globalization;
@@ -431,7 +521,8 @@ new file mode 100644
 +        private Task<Dictionary<int, TemplatePoint[]>?> ChooseCurveTemplates(Window parent, List<CurveTemplate> templates) {
 +            var edits = curveEdits.ToDictionary(x => x.Key, x => (TemplatePoint[])x.Value.Clone());
 +            var picker = new ComboBox {
-+                ItemsSource = templates.Select(t => string.Format(TuneText("candidate"), t.Id, t.Points.Length)).ToArray(),
++                ItemsSource = templates.Select(t => string.Format(TuneText("candidate"), t.Id,
++                    TuneText($"curve.{t.Id}"), t.Points.Length)).ToArray(),
 +                SelectedIndex = 0,
 +                HorizontalAlignment = HorizontalAlignment.Stretch,
 +            };
