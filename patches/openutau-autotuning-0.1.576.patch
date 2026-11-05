@@ -1,13 +1,14 @@
 diff --git a/OpenUtau/Controls/PianoRoll.axaml b/OpenUtau/Controls/PianoRoll.axaml
 --- a/OpenUtau/Controls/PianoRoll.axaml
 +++ b/OpenUtau/Controls/PianoRoll.axaml
-@@ -370,6 +370,10 @@
+@@ -370,6 +370,11 @@
                <MenuItem Header="{DynamicResource pianoroll.menu.lyrics}" ItemsSource="{Binding LyricBatchEdits}" Classes="MenuItemWithSubMenu"/>
                <MenuItem Header="{DynamicResource pianoroll.menu.reset}" ItemsSource="{Binding ResetBatchEdits}" Classes="MenuItemWithSubMenu"/>
                <MenuItem Header="{DynamicResource pianoroll.menu.external}" ItemsSource="{Binding ExternalBatchEdits}" Classes="MenuItemWithSubMenu"/>
 +              <MenuItem Header="{DynamicResource pianoroll.autotune.menu}">
 +                <MenuItem Header="AutoPitchwriter" Click="OnMenuAutoPitchwriter"/>
 +                <MenuItem Header="EnuPitch…" Click="OnMenuEnuPitch"/>
++                <MenuItem Header="{DynamicResource pianoroll.autotune.reduce}" Click="OnMenuReducePitch"/>
 +              </MenuItem>
                <MenuItem Header="{DynamicResource pianoroll.menu.part.legacypluginexp}" ItemsSource="{Binding LegacyPlugins}" Name="PluginMenu" Classes="MenuItemWithSubMenu"/>
              </MenuItem>
@@ -15,7 +16,7 @@ diff --git a/OpenUtau/Controls/PianoRoll.axaml b/OpenUtau/Controls/PianoRoll.axa
 diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 --- a/OpenUtau/Strings/Strings.axaml
 +++ b/OpenUtau/Strings/Strings.axaml
-@@ -618,6 +618,77 @@
+@@ -618,6 +618,83 @@
    <system:String x:Key="phoneticassistant.copy">Copy</system:String>
  
    <system:String x:Key="pianoroll.key">Key (for scale degree display)</system:String>
@@ -77,6 +78,12 @@ diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 +  <system:String x:Key="pianoroll.autotune.curveinterval">Point {0}: interval (ms)</system:String>
 +  <system:String x:Key="pianoroll.autotune.curvepitch">Point {0}: pitch (cents)</system:String>
 +  <system:String x:Key="pianoroll.autotune.resetcurve">Reset this template</system:String>
++  <system:String x:Key="pianoroll.autotune.reduction">Pitch points</system:String>
++  <system:String x:Key="pianoroll.autotune.reduce">Reduce pitch points…</system:String>
++  <system:String x:Key="pianoroll.autotune.reduceoff">Keep all points</system:String>
++  <system:String x:Key="pianoroll.autotune.reduce5">Light (5 cents)</system:String>
++  <system:String x:Key="pianoroll.autotune.reduce10">Standard (10 cents)</system:String>
++  <system:String x:Key="pianoroll.autotune.reduce20">Strong (20 cents)</system:String>
 +  <system:String x:Key="pianoroll.autotune.warning">AutoPitchwriter recreates the notes in this range. OpenUtau AU note volumes and vocal technique settings will be lost. You can undo this operation. Continue?</system:String>
 +  <system:String x:Key="pianoroll.autotune.range">Select consecutive, non-overlapping notes.</system:String>
 +  <system:String x:Key="pianoroll.autotune.enumeter">EnuPitch supports a single 3/4, 4/4 or 6/8 meter per selection.</system:String>
@@ -96,7 +103,7 @@ diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
 diff --git a/OpenUtau/Strings/Strings.ja-JP.axaml b/OpenUtau/Strings/Strings.ja-JP.axaml
 --- a/OpenUtau/Strings/Strings.ja-JP.axaml
 +++ b/OpenUtau/Strings/Strings.ja-JP.axaml
-@@ -460,6 +460,77 @@
+@@ -460,6 +460,83 @@
    <system:String x:Key="phoneticassistant.copy">コピー</system:String>
  
    <system:String x:Key="pianoroll.key">キー（スケール表示）</system:String>
@@ -158,6 +165,12 @@ diff --git a/OpenUtau/Strings/Strings.ja-JP.axaml b/OpenUtau/Strings/Strings.ja-
 +  <system:String x:Key="pianoroll.autotune.curveinterval">点{0}：前の点からの時間（ms）</system:String>
 +  <system:String x:Key="pianoroll.autotune.curvepitch">点{0}：音程（セント）</system:String>
 +  <system:String x:Key="pianoroll.autotune.resetcurve">この候補を初期値に戻す</system:String>
++  <system:String x:Key="pianoroll.autotune.reduction">ピッチの点数</system:String>
++  <system:String x:Key="pianoroll.autotune.reduce">ピッチの点を減らす…</system:String>
++  <system:String x:Key="pianoroll.autotune.reduceoff">元の点をすべて残す</system:String>
++  <system:String x:Key="pianoroll.autotune.reduce5">控えめ（5セント）</system:String>
++  <system:String x:Key="pianoroll.autotune.reduce10">標準（10セント）</system:String>
++  <system:String x:Key="pianoroll.autotune.reduce20">強め（20セント）</system:String>
 +  <system:String x:Key="pianoroll.autotune.warning">AutoPitchwriterは対象範囲のノートを作り直します。OpenUtau AUのノート音量と歌唱テクニックの設定は失われます。実行後は「元に戻す」で取り消せます。実行しますか？</system:String>
 +  <system:String x:Key="pianoroll.autotune.range">重なりのない連続したノートを選択してください。</system:String>
 +  <system:String x:Key="pianoroll.autotune.enumeter">EnuPitchは3/4、4/4、6/8に対応します。拍子が変わる場合は区間を分けて選択してください。</system:String>
@@ -178,7 +191,7 @@ diff --git a/OpenUtau/Controls/PianoRoll.AutoTuning.cs b/OpenUtau/Controls/Piano
 new file mode 100644
 --- /dev/null
 +++ b/OpenUtau/Controls/PianoRoll.AutoTuning.cs
-@@ -0,0 +1,280 @@
+@@ -0,0 +1,384 @@
 +using System;
 +using System.Collections.Generic;
 +using System.Diagnostics;
@@ -207,7 +220,12 @@ new file mode 100644
 +        private static string TuneText(string key) => ThemeManager.GetString("pianoroll.autotune." + key);
 +        private static readonly string[] TuningStyles = { "Standard", "Sweet", "Rock", "Breathy", "Pop", "Growl" };
 +        private static readonly string[] TuningStrengths = { "Loudest", "Loud", "Normal", "Soft" };
-+        private record TuningOptions(string Strength, string Style, int Shift);
++        private record TuningOptions(string Strength, string Style, int Shift, int Reduction);
++        private static readonly int[] ReductionCents = { 0, 5, 10, 20 };
++        private static ComboBox ReductionPicker() => new ComboBox {
++            ItemsSource = new[] { TuneText("reduceoff"), TuneText("reduce5"), TuneText("reduce10"), TuneText("reduce20") },
++            SelectedIndex = 2,
++        };
 +
 +        private async void OnMenuAutoPitchwriter(object? sender, RoutedEventArgs args) =>
 +            await RunBuiltInTuning(false);
@@ -215,6 +233,7 @@ new file mode 100644
 +            await RunBuiltInTuning(true);
 +
 +        private Task<TuningOptions?> ChooseTuningOptions(Window parent) {
++            var reduction = ReductionPicker();
 +            var strength = new ComboBox { ItemsSource = TuningStrengths, SelectedIndex = 1 };
 +            var style = new ComboBox { ItemsSource = TuningStyles, SelectedIndex = 0 };
 +            var shift = new ComboBox {
@@ -226,7 +245,7 @@ new file mode 100644
 +                CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner,
 +            };
 +            var body = new StackPanel { Spacing = 8, Margin = new Thickness(18) };
-+            foreach (var (key, field) in new[] { ("strength", strength), ("style", style), ("shift", shift) }) {
++            foreach (var (key, field) in new[] { ("strength", strength), ("style", style), ("shift", shift), ("reduction", reduction) }) {
 +                var label = new Label { Content = TuneText(key), Target = field };
 +                body.Children.Add(label);
 +                body.Children.Add(field);
@@ -237,7 +256,8 @@ new file mode 100644
 +            cancel.Click += (_, _) => dialog.Close(null);
 +            var apply = new Button { Content = TuneText("run"), IsDefault = true };
 +            apply.Click += (_, _) => dialog.Close(new TuningOptions(
-+                TuningStrengths[strength.SelectedIndex], TuningStyles[style.SelectedIndex], shift.SelectedIndex - 6));
++                TuningStrengths[strength.SelectedIndex], TuningStyles[style.SelectedIndex], shift.SelectedIndex - 6,
++                ReductionCents[reduction.SelectedIndex]));
 +            buttons.Children.Add(cancel);
 +            buttons.Children.Add(apply);
 +            body.Children.Add(buttons);
@@ -327,7 +347,7 @@ new file mode 100644
 +                        }
 +                        var commands = sequence.Zip(pitches).Where(pair =>
 +                            selected.Contains(pair.First) && pair.Second.Length >= 2)
-+                            .Select(pair => new SetPitchPointsCommand(part, pair.First, BuildTunedPitch(pair.First, pair.Second))).ToArray();
++                            .Select(pair => new SetPitchPointsCommand(part, pair.First, BuildTunedPitch(pair.First, ReduceEnuPoints(pair.Second, options!.Reduction)))).ToArray();
 +                        if (commands.Length == 0) { throw new InvalidDataException("EnuPitch returned no pitch curves."); }
 +                        DocManager.Inst.StartUndoGroup("command.pitch.add");
 +                        foreach (var command in commands) { DocManager.Inst.ExecuteCmd(command); }
@@ -385,16 +405,113 @@ new file mode 100644
 +            return sequence;
 +        }
 +
++        private static List<PitchPoint> ReducePitchPoints(List<PitchPoint> source, double toleranceCents) {
++            if (source.Count < 3 || toleranceCents <= 0) { return source.Select(p => p.Clone()).ToList(); }
++            if (source.Any(p => !float.IsFinite(p.X) || !float.IsFinite(p.Y)) ||
++                source.Zip(source.Skip(1)).Any(p => p.First.X >= p.Second.X)) {
++                throw new InvalidDataException("Invalid pitch control point order.");
++            }
++            double tolerance = toleranceCents / 10;
++            var keep = new SortedSet<int> { 0, source.Count - 1 };
++            var pending = new Stack<(int Start, int End)>();
++            pending.Push((0, source.Count - 1));
++            while (pending.Count > 0) {
++                var (start, end) = pending.Pop();
++                if (end <= start + 1) { continue; }
++                var a = source[start];
++                var b = source[end];
++                double worst = tolerance, worstX = a.X;
++                for (int i = start; i < end; i++) {
++                    var p = source[i];
++                    var q = source[i + 1];
++                    // Check between knots too: merging sine-eased spans changes their curvature.
++                    int steps = Math.Clamp((int)Math.Ceiling((q.X - p.X) / 2), 8, 512);
++                    for (int k = 0; k <= steps; k++) {
++                        double x = p.X + (q.X - p.X) * k / steps;
++                        double oldY = MusicMath.InterpolateShape(p.X, q.X, p.Y, q.Y, x, p.shape);
++                        double newY = MusicMath.InterpolateShape(a.X, b.X, a.Y, b.Y, x, a.shape);
++                        double error = Math.Abs(oldY - newY);
++                        if (error > worst) { worst = error; worstX = x; }
++                    }
++                }
++                if (worst <= tolerance) { continue; }
++                int split = Enumerable.Range(start + 1, end - start - 1)
++                    .MinBy(i => Math.Abs(source[i].X - worstX));
++                keep.Add(split);
++                pending.Push((start, split));
++                pending.Push((split, end));
++            }
++            return keep.Select(i => source[i].Clone()).ToList();
++        }
++
++        private static float[][] ReduceEnuPoints(float[][] data, int toleranceCents) =>
++            ReducePitchPoints(data.Select(p => new PitchPoint(p[0], p[1])).ToList(), toleranceCents)
++                .Select(p => new[] { p.X, p.Y }).ToArray();
++
++        private async void OnMenuReducePitch(object? sender, RoutedEventArgs args) {
++            if (tuning) { return; }
++            var vm = ViewModel.NotesViewModel;
++            var part = vm.Part;
++            if (part == null) { return; }
++            var notes = vm.Selection.IsEmpty ? part.notes.ToArray() : vm.Selection.ToArray();
++            var project = vm.Project;
++            var picker = ReductionPicker();
++            var dialog = new Window { Title = TuneText("reduce"), Width = 320,
++                SizeToContent = SizeToContent.Height, CanResize = false,
++                WindowStartupLocation = WindowStartupLocation.CenterOwner };
++            var body = new StackPanel { Spacing = 12, Margin = new Thickness(18) };
++            body.Children.Add(picker);
++            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
++                HorizontalAlignment = HorizontalAlignment.Right };
++            var cancel = new Button { Content = ThemeManager.GetString("button.cancel"), IsCancel = true };
++            cancel.Click += (_, _) => dialog.Close(-1);
++            var apply = new Button { Content = TuneText("reduce"), IsDefault = true };
++            apply.Click += (_, _) => dialog.Close(picker.SelectedIndex);
++            buttons.Children.Add(cancel);
++            buttons.Children.Add(apply);
++            body.Children.Add(buttons);
++            dialog.Content = body;
++            var snapshot = notes.Select(n => n.pitch).ToArray();
++            int choice = await dialog.ShowDialog<int>(RootWindow);
++            if (choice <= 0 || choice >= ReductionCents.Length || vm.Project != project || vm.Part != part ||
++                !notes.All(part.notes.Contains) || !snapshot.SequenceEqual(notes.Select(n => n.pitch))) { return; }
++            try {
++                var commands = new List<SetPitchPointsCommand>();
++                foreach (var note in notes) {
++                    var pitch = note.pitch.Clone();
++                    bool active = new[] { "scoop", "fall", "hammer", "pull", "overshoot", "rise" }
++                        .Any(x => VocalTechniques.IsEnabled(pitch, x));
++                    var original = active && pitch.techniques!.original.Count >= 2
++                        ? pitch.techniques.original : pitch.data;
++                    var reduced = ReducePitchPoints(original, ReductionCents[choice]);
++                    if (reduced.Count >= original.Count) { continue; }
++                    pitch.data = reduced;
++                    if (active) { pitch = ReapplyTunedTechniques(note, pitch); }
++                    commands.Add(new SetPitchPointsCommand(part, note, pitch));
++                }
++                if (commands.Count == 0) { return; }
++                DocManager.Inst.StartUndoGroup("command.pitch.add");
++                foreach (var command in commands) { DocManager.Inst.ExecuteCmd(command); }
++                DocManager.Inst.EndUndoGroup();
++            } catch (Exception e) {
++                await MessageBox.ShowError(RootWindow, e, TuneText("reduce"));
++            }
++        }
++
 +        private static UPitch BuildTunedPitch(UNote note, float[][] data) {
 +            if (data.Length > 10000 || data.Any(p => p.Length != 2 || !float.IsFinite(p[0]) || !float.IsFinite(p[1]))) {
 +                throw new InvalidDataException("Invalid EnuPitch control points.");
 +            }
 +            var pitch = new UPitch { snapFirst = false, data = data.Select(p => new PitchPoint(p[0], p[1])).ToList(),
 +                techniques = note.pitch.techniques?.Clone() };
++            return ReapplyTunedTechniques(note, pitch);
++        }
++
++        private static UPitch ReapplyTunedTechniques(UNote note, UPitch pitch) {
 +            if (pitch.techniques is { } state) {
 +                state.original = pitch.data.Select(p => p.Clone()).ToList();
 +                state.applied = pitch.data.Select(p => p.Clone()).ToList();
-+                state.originalSnapFirst = false;
++                state.originalSnapFirst = pitch.snapFirst;
 +                string? active = new[] { "scoop", "fall", "hammer", "pull", "overshoot", "rise" }
 +                    .FirstOrDefault(x => VocalTechniques.IsEnabled(pitch, x));
 +                if (active != null) { pitch = VocalTechniques.Set(pitch, note.DurationMs, active, true); }
@@ -782,10 +899,11 @@ diff --git a/OpenUtau.Test/App/AutoTuningTest.cs b/OpenUtau.Test/App/AutoTuningT
 new file mode 100644
 --- /dev/null
 +++ b/OpenUtau.Test/App/AutoTuningTest.cs
-@@ -0,0 +1,183 @@
+@@ -0,0 +1,220 @@
 +using System;
 +using System.Diagnostics;
 +using System.Collections;
++using System.Collections.Generic;
 +using System.Text.RegularExpressions;
 +using System.Linq;
 +using System.IO;
@@ -800,6 +918,42 @@ new file mode 100644
 +namespace OpenUtau.App {
 +    public class AutoTuningTest {
 +        private const BindingFlags PrivateStatic = BindingFlags.Static | BindingFlags.NonPublic;
++
++        [Fact]
++        public void ReductionPreservesCurveAtOneMillisecondResolution() {
++            var source = Enumerable.Range(0, 101)
++                .Select(i => new PitchPoint(i * 5, (float)(1.5 * Math.Sin(i * Math.PI / 20)))).ToList();
++            var before = source.Select(p => (p.X, p.Y, p.shape)).ToArray();
++            var reduced = (List<PitchPoint>)typeof(PianoRoll).GetMethod("ReducePitchPoints", PrivateStatic)!
++                .Invoke(null, new object[] { source, 10d })!;
++            Assert.True(reduced.Count < source.Count / 2);
++            Assert.Equal(source[0].X, reduced[0].X);
++            Assert.Equal(source[^1].X, reduced[^1].X);
++            double At(List<PitchPoint> points, double x) {
++                int i = 1;
++                while (i < points.Count - 1 && x > points[i].X) { i++; }
++                var a = points[i - 1]; var b = points[i];
++                return MusicMath.InterpolateShape(a.X, b.X, a.Y, b.Y, x, a.shape);
++            }
++            for (int ms = 0; ms <= 500; ms++) {
++                Assert.InRange(Math.Abs(At(source, ms) - At(reduced, ms)) * 10, 0, 10.05);
++            }
++            Assert.Equal(before, source.Select(p => (p.X, p.Y, p.shape)));
++        }
++
++        [Fact]
++        public void ReductionKeepsPeaksAndCanBeDisabled() {
++            var source = new List<PitchPoint> {
++                new(-25, 0), new(0, 0), new(20, 20), new(40, 0), new(60, 0),
++            };
++            var method = typeof(PianoRoll).GetMethod("ReducePitchPoints", PrivateStatic)!;
++            var off = (List<PitchPoint>)method.Invoke(null, new object[] { source, 0d })!;
++            Assert.Equal(source.Select(p => (p.X, p.Y)), off.Select(p => (p.X, p.Y)));
++            var reduced = (List<PitchPoint>)method.Invoke(null, new object[] { source, 10d })!;
++            Assert.Contains(reduced, p => p.X == 20 && p.Y == 20);
++            var flat = Enumerable.Range(0, 100).Select(i => new PitchPoint(i, 0)).ToList();
++            Assert.Equal(2, ((List<PitchPoint>)method.Invoke(null, new object[] { flat, 10d })!).Count);
++        }
 +
 +        [Fact]
 +        public void EditedCurveTemplateReachesNativeAutoPitchwriter() {
