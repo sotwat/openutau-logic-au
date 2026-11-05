@@ -463,7 +463,7 @@ diff --git a/OpenUtau/Controls/PianoRoll.AutoPitchwriter.cs b/OpenUtau/Controls/
 new file mode 100644
 --- /dev/null
 +++ b/OpenUtau/Controls/PianoRoll.AutoPitchwriter.cs
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,314 @@
 +using System;
 +using System.Collections.Generic;
 +using System.Globalization;
@@ -476,12 +476,16 @@ new file mode 100644
 +using Avalonia.Automation;
 +using Avalonia.Controls;
 +using Avalonia.Layout;
++using Avalonia.Input;
++using Avalonia.Media;
++using OpenUtau.Core.Ustx;
++using OpenUtau.Core;
 +using Avalonia.Styling;
 +
 +namespace OpenUtau.App.Controls {
 +    public partial class PianoRoll {
 +        private record TemplatePoint(decimal Time, decimal Cents);
-+        private record CurveTemplate(int Id, int Block, TemplatePoint[] Points);
++        private record CurveTemplate(int Id, int Block, TemplatePoint[] Points, PitchPointShape[] Shapes);
 +        private readonly Dictionary<int, TemplatePoint[]> curveEdits = new();
 +
 +        private static List<CurveTemplate> ReadCurveTemplates(string[] blocks) {
@@ -500,7 +504,11 @@ new file mode 100644
 +                for (int j = 0; j < widths.Length; j++) {
 +                    points[j + 1] = new TemplatePoint(Number(widths[j]), j < offsets.Length ? 10 * Number(offsets[j]) : 0);
 +                }
-+                templates.Add(new CurveTemplate(id, i, points));
++                var shapes = Field("PBM").Split(',').Select(mode => mode switch {
++                    "r" => PitchPointShape.o, "s" => PitchPointShape.l, "j" => PitchPointShape.i,
++                    _ => PitchPointShape.io,
++                }).ToArray();
++                templates.Add(new CurveTemplate(id, i, points, shapes));
 +            }
 +            return templates.OrderBy(t => t.Id).ToList();
 +        }
@@ -519,6 +527,129 @@ new file mode 100644
 +                output[template.Block] = block;
 +            }
 +            File.WriteAllText(path, string.Concat(output), Encoding.GetEncoding(932));
++        }
++
++        private sealed class CurvePlot : Control {
++            private const double Pad = 26;
++            private double left, right, pitchRange;
++            private int active = -1;
++            private Point anchor;
++            private Point origin;
++            public required TemplatePoint[] Points { get; init; }
++            public required PitchPointShape[] Shapes { get; init; }
++            public required Action Changed { get; init; }
++            private double WidthOfPlot => Math.Max(1, Bounds.Width - Pad * 2);
++            private double HeightOfPlot => Math.Max(1, Bounds.Height - Pad * 2);
++            private double X(double time) => Pad + (time - left) / (right - left) * WidthOfPlot;
++            private double Y(double cents) => Pad + (pitchRange - cents) / (2 * pitchRange) * HeightOfPlot;
++
++            private double[] Times() {
++                var times = new double[Points.Length];
++                double t = 0;
++                for (int i = 0; i < times.Length; i++) { times[i] = t += (double)Points[i].Time; }
++                return times;
++            }
++
++            public void Refresh() {
++                if (active < 0) {
++                    var times = Times();
++                    double lo = Math.Min(0, times[0]), hi = Math.Max(0, times[^1]);
++                    double margin = Math.Max(35, (hi - lo) * .15);
++                    left = lo - margin;
++                    right = hi + margin;
++                    pitchRange = Math.Max(100, Math.Ceiling(Points.Max(p => Math.Abs((double)p.Cents)) / 100 + 1) * 100);
++                }
++                InvalidateVisual();
++            }
++
++            public override void Render(DrawingContext context) {
++                base.Render(context);
++                context.DrawRectangle(ThemeManager.BackgroundBrush, ThemeManager.NeutralAccentPenSemi, new Rect(Bounds.Size));
++                context.DrawLine(ThemeManager.NeutralAccentPenSemi, new Point(X(0), Pad), new Point(X(0), Bounds.Height - Pad));
++                context.DrawLine(ThemeManager.NeutralAccentPenSemi, new Point(Pad, Y(0)), new Point(Bounds.Width - Pad, Y(0)));
++                void Label(string text, Point where) => context.DrawText(
++                    new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
++                        Typeface.Default, 10, ThemeManager.ForegroundBrush), where);
++                Label("0 ms", new Point(X(0) + 3, Bounds.Height - Pad + 3));
++                Label("0", new Point(9, Y(0) - 7));
++                var times = Times();
++                for (int i = 1; i < times.Length; i++) {
++                    double a = times[i - 1], b = times[i];
++                    double y0 = (double)Points[i - 1].Cents, y1 = (double)Points[i].Cents;
++                    var previous = new Point(X(a), Y(y0));
++                    var shape = i - 1 < Shapes.Length ? Shapes[i - 1] : PitchPointShape.io;
++                    for (int n = 1; n <= 24; n++) {
++                        double t = a + (b - a) * n / 24;
++                        var next = new Point(X(t), Y(MusicMath.InterpolateShape(a, b, y0, y1, t, shape)));
++                        context.DrawLine(ThemeManager.AccentPen2Thickness2, previous, next);
++                        previous = next;
++                    }
++                }
++                for (int i = 0; i < times.Length; i++) {
++                    var center = new Point(X(times[i]), Y((double)Points[i].Cents));
++                    context.DrawEllipse(i == active ? ThemeManager.AccentBrush2 : ThemeManager.BackgroundBrush,
++                        ThemeManager.AccentPen2Thickness2, center, 5, 5);
++                }
++            }
++
++            protected override void OnPointerPressed(PointerPressedEventArgs e) {
++                base.OnPointerPressed(e);
++                if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) { return; }
++                var times = Times();
++                var p = e.GetPosition(this);
++                double best = 12;
++                for (int i = 0; i < times.Length; i++) {
++                    var center = new Point(X(times[i]), Y((double)Points[i].Cents));
++                    var distance = new Vector(center.X - p.X, center.Y - p.Y).Length;
++                    if (distance >= best) { continue; }
++                    best = distance;
++                    active = i;
++                }
++                if (active < 0) { return; }
++                anchor = p;
++                origin = new Point(times[active], (double)Points[active].Cents);
++                e.Pointer.Capture(this);
++                e.Handled = true;
++                InvalidateVisual();
++            }
++
++            protected override void OnPointerMoved(PointerEventArgs e) {
++                base.OnPointerMoved(e);
++                if (active < 0 || e.Pointer.Captured != this) { return; }
++                var delta = e.GetPosition(this) - anchor;
++                var times = Times();
++                double before = active == 0 ? 0 : times[active - 1];
++                double lo = active == 0 ? -3000 : before + 1;
++                double hi = active == 0 ? 3000 : before + 3000;
++                bool hasNext = active + 1 < times.Length;
++                if (hasNext) {
++                    lo = Math.Max(lo, times[active + 1] - 3000);
++                    hi = Math.Min(hi, times[active + 1] - 1);
++                }
++                if (lo > hi) { return; }
++                double time = Math.Clamp(origin.X + Math.Round(delta.X / WidthOfPlot * (right - left)), lo, hi);
++                double cents = Math.Clamp(origin.Y - Math.Round(delta.Y / HeightOfPlot * 2 * pitchRange), -2400, 2400);
++                Points[active] = new TemplatePoint((decimal)(time - before), (decimal)cents);
++                if (hasNext) {
++                    Points[active + 1] = Points[active + 1] with { Time = (decimal)(times[active + 1] - time) };
++                }
++                Changed();
++                InvalidateVisual();
++                e.Handled = true;
++            }
++
++            protected override void OnPointerReleased(PointerReleasedEventArgs e) {
++                base.OnPointerReleased(e);
++                if (active < 0 || e.Pointer.Captured != this) { return; }
++                e.Pointer.Capture(null);
++                e.Handled = true;
++            }
++
++            protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e) {
++                base.OnPointerCaptureLost(e);
++                active = -1;
++                Refresh();
++            }
 +        }
 +
 +        private Task<Dictionary<int, TemplatePoint[]>?> ChooseCurveTemplates(Window parent, List<CurveTemplate> templates) {
@@ -558,6 +689,26 @@ new file mode 100644
 +                var points = edits.TryGetValue(template.Id, out var existing)
 +                    ? existing : (TemplatePoint[])template.Points.Clone();
 +                rows.Children.Clear();
++                var times = new NumericUpDown[points.Length];
++                var pitches = new NumericUpDown[points.Length];
++                bool fromPlot = false;
++                var plot = new CurvePlot {
++                    Height = 185,
++                    ClipToBounds = true,
++                    Points = points,
++                    Shapes = template.Shapes,
++                    Changed = () => {
++                        fromPlot = true;
++                        for (int i = 0; i < points.Length; i++) {
++                            times[i].Value = points[i].Time;
++                            pitches[i].Value = points[i].Cents;
++                        }
++                        fromPlot = false;
++                        edits[template.Id] = points;
++                    },
++                };
++                plot.Refresh();
++                rows.Children.Add(plot);
 +                var header = CurveRow();
 +                var timeHeader = new TextBlock { Text = TuneText("timecolumn") };
 +                var pitchHeader = new TextBlock { Text = TuneText("pitchcolumn") };
@@ -581,16 +732,20 @@ new file mode 100644
 +                    AutomationProperties.SetName(time, string.Format(TuneText(i == 0 ? "curvestart" : "curveinterval"), i + 1));
 +                    ToolTip.SetTip(time, string.Format(TuneText(i == 0 ? "curvestart" : "curveinterval"), i + 1));
 +                    AutomationProperties.SetName(pitch, string.Format(TuneText("curvepitch"), i + 1));
++                    times[i] = time;
++                    pitches[i] = pitch;
 +                    time.ValueChanged += (_, _) => {
-+                        if (time.Value is decimal value) {
++                        if (!fromPlot && time.Value is decimal value) {
 +                            points[index] = points[index] with { Time = value };
 +                            edits[template.Id] = points;
++                            plot.Refresh();
 +                        }
 +                    };
 +                    pitch.ValueChanged += (_, _) => {
-+                        if (pitch.Value is decimal value) {
++                        if (!fromPlot && pitch.Value is decimal value) {
 +                            points[index] = points[index] with { Cents = value };
 +                            edits[template.Id] = points;
++                            plot.Refresh();
 +                        }
 +                    };
 +                    Grid.SetColumn(time, 1);
@@ -616,7 +771,7 @@ new file mode 100644
 +            buttons.Children.Add(cancel);
 +            buttons.Children.Add(run);
 +            body.Children.Add(buttons);
-+            window.Content = new ScrollViewer { Content = body, MaxHeight = 620 };
++            window.Content = new ScrollViewer { Content = body, MaxHeight = 690 };
 +            ShowCandidate();
 +            window.Opened += (_, _) => picker.Focus();
 +            return window.ShowDialog<Dictionary<int, TemplatePoint[]>?>(parent);
