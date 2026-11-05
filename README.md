@@ -1,14 +1,46 @@
-# openutau-vst-bridge
+# OpenUtau AU — Logic Pro・Apple Silicon版
 
-This branch adds an Audio Unit instrument and a native macOS relay for Logic Pro.
-The maintained repository is <https://github.com/sotwat/openutau-logic-au>.
-For Apple Silicon installation and the tested DAW workflow, see
-[LOGIC_SETUP.md](LOGIC_SETUP.md). A self-contained ZIP with OpenUtau `0.1.576`
-and a piano-roll trackpad pinch zoom patch that separates horizontal time zoom
-from vertical pitch zoom when macOS supplies touch positions,
-the AU, and the relay can be built with `sh distribution/build_macos_arm64.sh`.
-Open the bundled セットアップ.app to install and validate the AU automatically; no Terminal commands are needed. The setup app and its trust limitations are documented in
-[distribution/README.md](distribution/README.md).
+[最新版のセットアップZIPをダウンロード](https://github.com/sotwat/openutau-logic-au/releases/latest)
+
+ZIPを展開して「セットアップ.app」を開くと、OpenUtau AUとLogic用AUを導入できます。現在の配布は **0.1.576-one-click.8** です。Logicでの使い方は[LOGIC_SETUP.md](LOGIC_SETUP.md)、初回起動や導入条件は[同梱README](distribution/README.md)を参照してください。
+
+歌声ライブラリ・譜面・Logic Proは含みません。AutoPitchwriterとEnuPitchの本体・モデル・実行環境は初回に配布元から取得するため、インターネット接続が必要です。Developer ID署名・公証はありません。
+
+## 公式配布版に追加した機能
+
+2026年11月5日に、公式の安定版[0.1.576](https://github.com/openutau/OpenUtau/releases/tag/0.1.576)と、最新試験版[0.1.577.8 Alpha](https://github.com/openutau/OpenUtau/releases/tag/0.1.577.8-alpha)のソースを照合した一覧です。この配布のベースは安定版0.1.576です。Alpha固有の新機能をすべて取り込んだ版ではありません。
+
+- **Logic Pro用Audio Unit音源**：OpenUtau Bridge AUとApple Silicon用のローカル中継を追加。公式DAW連携のVST3/CLAPに加え、Logic Proから利用できます。譜面編集は別のOpenUtauウィンドウで行います。
+- **Logic用の接続案内**：DAW Integration画面にAUの導入状態とLogic向けの接続先・手順を表示します。
+- **セットアップ.app**：OpenUtau AU・AU音源・中継の配置、AU登録・検証、中継の自動起動設定をまとめて行います。ターミナルでのインストール操作は不要です。
+- **ピアノロールの縦横別ピンチ**：二本指の横方向の動きで時間軸、縦方向の動きで音程軸を拡大・縮小。移動方向から軸を判定し、ジェスチャー中は固定します。判定待ちではズームせず、タッチ情報を取得できないときは時間軸だけを動かします。
+- **トラック画面の横ピンチ**：配置エリアと時間目盛りで、ポインタ位置の時刻を基準に時間軸を拡大・縮小。トラックの高さは変えず、縦ピンチは無視します。
+- **Shift＋上下矢印でオクターブ移調**：公式の既存ショートカットに加え、Shiftでも選択ノートを12半音上下できます。
+- **Backspaceでパート削除**：トラック画面で選択したリージョン（パート）をMacのdelete／Backspaceキーで削除できます。
+- **Command＋Returnで先頭へ移動**：トラック画面とピアノロールで再生位置を0秒に戻します。再生中は先頭から再生を続けます。
+- **ひらがな歌詞の直接分配**：ノートに「ありがとう」などを入力すると後続ノートへ分配。「きゃ」などは1ノートにまとめ、ノートが足りなければ余りを切り捨てます。
+- **6種の歌唱テクニック**：しゃくり・フォール・ハンマリング・プリング・オーバーシュート・ヒーカップをノート単位でON/OFFでき、深さ・長さなどを数値調整できます。通常のノート間ピッチカーブを編集する方式です。
+- **歌唱テクニックの保存と復元**：USTXにON/OFFと調整値を保存。再生・接続点補正や生成点の手調整後も設定を維持し、OFFでそのテクニックの効果を取り除きます。
+- **配置済みノートのドラッグ確認音**：ノートを上下に動かすとその高さの確認音が鳴り、指を離すと止まります。
+- **矢印キー移調時の確認音**：上下移動やオクターブ移調の結果を短い確認音で聞けます。既存のガイド音スイッチに従います。
+- **ノート音量（0〜200%）**：「音符のプロパティ → 基本」でノートごとの音量を調整し、USTXに保存。DiffSingerでも使用できます。
+- **べた打ちUST書き出し**：音符と歌詞を残し、調声を外したUSTを別ファイルへ出力します。元のUSTXは変更しません。
+- **Finderの譜面連携**：UST・USTX・MIDIを「このアプリケーションで開く」から読み込み、UST・USTXはセットアップ時に既定のアプリへ登録。MIDIと音声の既定アプリは変更しません。
+- **AutoPitchwriterの標準メニュー**：作者配布1.7.0をApple Silicon上のOpenHSPで動かす呼び出し機能を追加。Rosetta・Wineは不要です。ノート再作成で独自の音量・歌唱テクニック設定が失われることを実行前に表示し、Undoに対応します。対応区間は4/4です。
+- **AutoPitchwriterの45候補エディター**：候補に動きを表す名前を付け、各点の時間と音程を数値で調整できます。全45候補・159点で、候補単位の初期化に対応します。
+- **AutoPitchwriterのグラフ編集**：カーブの点を左右・上下へドラッグして時間・音程を調整でき、数値欄と双方向に連動します。編集する候補を選べますが、譜面への候補割り当ては元の自動判定です。
+- **EnuPitchの標準メニュー**：v0.2.0のモデルをARM64版Pythonで実行。強弱・6種の歌唱スタイル・−6〜＋6半音のスタイルシフトをAUの画面から指定できます。
+- **EnuPitchの選択・拍子処理**：元GUIのスタイルシフト未反映と拍子処理を修正。3/4・4/4・6/8と小節途中の選択に対応します。拍子・テンポの変更箇所は区間を分けます。
+- **EnuPitchの設定保持と進捗表示**：ピッチだけを元ノートへ書き戻し、歌詞・音高・長さ・ノート音量・歌唱テクニック設定を保持。進捗表示、キャンセル、30分の処理上限、Undoに対応します。
+- **EnuPitchの点数削減**：生成時に「元の点を残す・控えめ・標準・強め」を選べます。カーブの形を比較し、5・10・20セントを目安に余分な点を間引きます。
+- **生成済みピッチの点数削減**：選択ノートまたはパート全体を、再推論せずに間引けます。ノート音量・歌唱テクニック設定を保持し、Undoに対応します。
+- **公式アップデーターによる上書きの抑止**：改造版を公式アプリへ置き換えないよう、起動時の公式更新案内を停止しています。
+
+鍵盤の確認音、一般的なDAWプロジェクト同期・再生位置同期、通常のUST/MIDI入出力、ビブラート、音声のドラッグ＆ドロップなど、公式にもある機能は独自追加として数えていません。各エンジンの制約や操作手順は[AUTOTUNING.md](AUTOTUNING.md)と[LOGIC_SETUP.md](LOGIC_SETUP.md)を参照してください。
+
+## ブリッジの元プロジェクト
+
+以下はVST3/CLAP版を含む上流ブリッジの説明です。
 
 [![CI](https://github.com/KakaruHayate/openutau-vst-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/KakaruHayate/openutau-vst-bridge/actions/workflows/ci.yml) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/KakaruHayate/openutau-vst-bridge) ![Format: VST3 | CLAP](https://img.shields.io/badge/Format-VST3%20%7C%20CLAP-blue)  [![License](https://img.shields.io/github/license/KakaruHayate/openutau-vst-bridge?style=flat&color=blue)](https://github.com/KakaruHayate/openutau-vst-bridge/blob/main/LICENSE)
 

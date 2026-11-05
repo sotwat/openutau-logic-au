@@ -3,12 +3,12 @@ set -eu
 
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 app=${OPENUTAU_APP:-/Applications/OpenUtau AU.app}
-version=0.1.576-one-click.7
-expected_app_sha=f079541f8216cbd240837bd3d204b041cc8e3498fc568be2fa3f89fc029f9a4e
-expected_release_app_sha=b7c5540024a9f83043d66e09b54957b15e20d5f65160061cfc8a079813d6e7dc
-expected_dll_sha=e44e2c12cf4686668a06153d4d191397a935b1598fed50bda9161aadb6d42e6c
+version=0.1.576-one-click.8
+expected_app_sha=5457cb815b6231ce2cd0ff06deabf49a7415949a9e5d38a9865cbf030669db7d
+expected_release_app_sha=6ca75efd3c67dae3da6aa6f53735ec2582568b7432a5bf9dfbe3d4f539547e83
+expected_dll_sha=7bbc82befac2e2647102f99ce800346f551eb383f3b89496e6505b072ad888bc
 expected_core_sha=43a6d5d8409c264f6b2e9a5ee88c693451f8420e4f84420bc8a3e7debc53af07
-expected_axis_sha=4fda6e2e0cce594017a9d6cc0cd8a7ce8d973ffe6bb306d0003692999af6ac8b
+expected_axis_sha=3916c65a4a9d838496e2cedc9a9846c090e61998043bff637e35709ef2d09b31
 name="OpenUtau-Logic-AU-${version}-macos-arm64"
 
 test -d "$app" || { echo "OpenUtau app not found: $app" >&2; exit 1; }
@@ -27,6 +27,12 @@ actual_core_sha=$(shasum -a 256 "$app/Contents/MacOS/OpenUtau.Core.dll" | awk '{
 test "$actual_core_sha" = "$expected_core_sha" || { echo "Vocal-technique core hash mismatch." >&2; exit 1; }
 actual_axis_sha=$(shasum -a 256 "$app/Contents/MacOS/libOpenUtauPinchAxis.dylib" | awk '{print $1}')
 test "$actual_axis_sha" = "$expected_axis_sha" || { echo "Pinch-axis helper hash mismatch." >&2; exit 1; }
+(
+    cd "$app/Contents/Resources/AutoTuning"
+    shasum -a 256 -c "$repo/distribution/autotuning.sha256"
+)
+cmp "$repo/autotune/run.sh" "$app/Contents/Resources/AutoTuning/run.sh"
+cmp "$repo/autotune/enu.py" "$app/Contents/Resources/AutoTuning/enu.py"
 test "$(uname -m)" = arm64 || { echo 'Build on Apple Silicon.' >&2; exit 1; }
 
 cmake -S "$repo" -B "$repo/build" -DCMAKE_BUILD_TYPE=Release
@@ -82,6 +88,8 @@ ditto "$repo/distribution/README.md" "$stage/README.md"
         'payload/OpenUtau.app/Contents/Info.plist' \
         'payload/OpenUtau Bridge.component/Contents/MacOS/OpenUtau Bridge' \
         'payload/openutau-bridge-relay' > SHA256SUMS
+    find payload/OpenUtau.app/Contents/Resources/AutoTuning -type f -print0 |
+        xargs -0 shasum -a 256 >> SHA256SUMS
 )
 codesign --force --sign - --timestamp=none "$setup"
 codesign --verify --deep --strict "$setup"
