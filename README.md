@@ -6,6 +6,10 @@ ZIPを展開して「セットアップ.app」を開くと、OpenUtau AUとLogic
 
 歌声ライブラリ・譜面・Logic Proは含みません。AutoPitchwriterとEnuPitchの本体・モデル・実行環境は初回に配布元から取得するため、インターネット接続が必要です。Developer ID署名・公証はありません。
 
+## 開発版の追加機能
+
+- **音声からピッチ転写**：同梱のpYIN／WORLDを使い、音声ファイルから選択ノートのカーブへ転写。位置合わせ・点数削減・Undoに対応し、追加モデルは不要です。[使い方と公式の既存機能との違い](docs/audio-pitch-transfer.md)。公開ZIPのone-click.8には未収録です。
+
 ## 公式配布版に追加した機能
 
 2026年11月5日に、公式の安定版[0.1.576](https://github.com/openutau/OpenUtau/releases/tag/0.1.576)と、最新試験版[0.1.577.8 Alpha](https://github.com/openutau/OpenUtau/releases/tag/0.1.577.8-alpha)のソースを照合した一覧です。この配布のベースは安定版0.1.576です。Alpha固有の新機能をすべて取り込んだ版ではありません。

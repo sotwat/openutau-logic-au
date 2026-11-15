@@ -1,0 +1,332 @@
+diff --git a/OpenUtau/Controls/PianoRoll.axaml b/OpenUtau/Controls/PianoRoll.axaml
+--- a/OpenUtau/Controls/PianoRoll.axaml
++++ b/OpenUtau/Controls/PianoRoll.axaml
+@@ -373,6 +373,7 @@
+               <MenuItem Header="{DynamicResource pianoroll.autotune.menu}">
+                 <MenuItem Header="AutoPitchwriter" Click="OnMenuAutoPitchwriter"/>
+                 <MenuItem Header="EnuPitch…" Click="OnMenuEnuPitch"/>
++                <MenuItem Header="{DynamicResource pianoroll.audiopitch.title}" Click="OnMenuAudioPitch"/>
+                 <MenuItem Header="{DynamicResource pianoroll.autotune.reduce}" Click="OnMenuReducePitch"/>
+               </MenuItem>
+               <MenuItem Header="{DynamicResource pianoroll.menu.part.legacypluginexp}" ItemsSource="{Binding LegacyPlugins}" Name="PluginMenu" Classes="MenuItemWithSubMenu"/>
+diff --git a/OpenUtau/Strings/Strings.axaml b/OpenUtau/Strings/Strings.axaml
+--- a/OpenUtau/Strings/Strings.axaml
++++ b/OpenUtau/Strings/Strings.axaml
+@@ -618,6 +618,17 @@
+   <system:String x:Key="phoneticassistant.copy">Copy</system:String>
+ 
+   <system:String x:Key="pianoroll.key">Key (for scale degree display)</system:String>
++  <system:String x:Key="pianoroll.audiopitch.title">Transfer pitch from audio…</system:String>
++  <system:String x:Key="pianoroll.audiopitch.selection">First selected note</system:String>
++  <system:String x:Key="pianoroll.audiopitch.zero">Project start</system:String>
++  <system:String x:Key="pianoroll.audiopitch.anchor">Place audio time zero at</system:String>
++  <system:String x:Key="pianoroll.audiopitch.offset">Position adjustment (ms)</system:String>
++  <system:String x:Key="pianoroll.audiopitch.method">Pitch detector</system:String>
++  <system:String x:Key="pianoroll.audiopitch.apply">Transfer pitch</system:String>
++  <system:String x:Key="pianoroll.audiopitch.running">Analyzing audio pitch…</system:String>
++  <system:String x:Key="pianoroll.audiopitch.empty">No voiced audio overlaps the target notes. Check the audio placement and selection.</system:String>
++  <system:String x:Key="pianoroll.audiopitch.channels">Select a mono or stereo audio file.</system:String>
++  <system:String x:Key="pianoroll.audiopitch.failed">Pitch analysis failed. Check the OpenUtau log.</system:String>
+   <system:String x:Key="pianoroll.autotune.menu">Automatic tuning</system:String>
+   <system:String x:Key="pianoroll.autotune.strength">Vocal strength</system:String>
+   <system:String x:Key="pianoroll.autotune.style">Singing style</system:String>
+diff --git a/OpenUtau/Strings/Strings.ja-JP.axaml b/OpenUtau/Strings/Strings.ja-JP.axaml
+--- a/OpenUtau/Strings/Strings.ja-JP.axaml
++++ b/OpenUtau/Strings/Strings.ja-JP.axaml
+@@ -460,6 +460,17 @@
+   <system:String x:Key="phoneticassistant.copy">コピー</system:String>
+ 
+   <system:String x:Key="pianoroll.key">キー（スケール表示）</system:String>
++  <system:String x:Key="pianoroll.audiopitch.title">音声からピッチ転写…</system:String>
++  <system:String x:Key="pianoroll.audiopitch.selection">選択先頭のノート</system:String>
++  <system:String x:Key="pianoroll.audiopitch.zero">曲の0秒</system:String>
++  <system:String x:Key="pianoroll.audiopitch.anchor">音声0秒の配置先</system:String>
++  <system:String x:Key="pianoroll.audiopitch.offset">位置の補正（ms）</system:String>
++  <system:String x:Key="pianoroll.audiopitch.method">ピッチ解析方式</system:String>
++  <system:String x:Key="pianoroll.audiopitch.apply">ピッチを転写</system:String>
++  <system:String x:Key="pianoroll.audiopitch.running">音声のピッチを解析しています…</system:String>
++  <system:String x:Key="pianoroll.audiopitch.empty">対象ノートの範囲に有声音が見つかりません。音声の配置先と選択範囲を確認してください。</system:String>
++  <system:String x:Key="pianoroll.audiopitch.channels">モノラルかステレオの音声ファイルを選んでください。</system:String>
++  <system:String x:Key="pianoroll.audiopitch.failed">ピッチ解析に失敗しました。OpenUtauのログを確認してください。</system:String>
+   <system:String x:Key="pianoroll.autotune.menu">自動調声</system:String>
+   <system:String x:Key="pianoroll.autotune.strength">強弱</system:String>
+   <system:String x:Key="pianoroll.autotune.style">歌唱スタイル</system:String>
+diff --git a/OpenUtau/Controls/PianoRoll.AudioPitch.cs b/OpenUtau/Controls/PianoRoll.AudioPitch.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau/Controls/PianoRoll.AudioPitch.cs
+@@ -0,0 +1,165 @@
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Linq;
++using System.Threading;
++using System.Threading.Tasks;
++using Avalonia;
++using Avalonia.Controls;
++using Avalonia.Interactivity;
++using Avalonia.Layout;
++using Avalonia.Styling;
++using NAudio.Wave;
++using NAudio.Wave.SampleProviders;
++using OpenUtau.App.Views;
++using OpenUtau.Core;
++using OpenUtau.Core.Render;
++using OpenUtau.Core.Ustx;
++using OpenUtau.Core.Util;
++using AudioFile = OpenUtau.Core.Format.Wave;
++
++namespace OpenUtau.App.Controls {
++    public partial class PianoRoll {
++        private static string AudioPitchText(string key) => ThemeManager.GetString("pianoroll.audiopitch." + key);
++        private record AudioPitchOptions(bool AtSelection, double OffsetMs, int Method, int Reduction);
++
++        private static Task<AudioPitchOptions?> ChooseAudioPitchOptions(Window parent) {
++            var anchor = new ComboBox {
++                ItemsSource = new[] { AudioPitchText("selection"), AudioPitchText("zero") }, SelectedIndex = 0,
++            };
++            var offset = new NumericUpDown {
++                Minimum = -3600000, Maximum = 3600000, Increment = 10, Value = 0,
++                FormatString = "0.##", Height = 34,
++            };
++            var method = new ComboBox { ItemsSource = new[] { "pYIN", "WORLD DIO" }, SelectedIndex = 0 };
++            var reduction = ReductionPicker();
++            var body = new StackPanel { Spacing = 8, Margin = new Thickness(18) };
++            foreach (var (key, control) in new (string, Control)[] {
++                ("anchor", anchor), ("offset", offset), ("method", method), ("reduction", reduction),
++            }) {
++                body.Children.Add(new Label { Content = key == "reduction" ? TuneText(key) : AudioPitchText(key), Target = control });
++                body.Children.Add(control);
++            }
++            var dialog = new Window {
++                Title = AudioPitchText("title"), Width = 400, SizeToContent = SizeToContent.Height,
++                CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner,
++            };
++            dialog.Styles.Add(new Style(x => x.OfType<NumericUpDown>().Template().OfType<TextBox>()) {
++                Setters = {
++                    new Setter(TextBox.HeightProperty, double.NaN),
++                    new Setter(TextBox.MinHeightProperty, 30d),
++                    new Setter(TextBox.MarginProperty, new Thickness(0)),
++                    new Setter(TextBox.PaddingProperty, new Thickness(8, 3)),
++                    new Setter(TextBox.VerticalAlignmentProperty, VerticalAlignment.Stretch),
++                    new Setter(TextBox.VerticalContentAlignmentProperty, VerticalAlignment.Center),
++                },
++            });
++            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
++                HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 8, 0, 0) };
++            var cancel = new Button { Content = ThemeManager.GetString("button.cancel"), IsCancel = true };
++            cancel.Click += (_, _) => dialog.Close(null);
++            var apply = new Button { Content = AudioPitchText("apply"), IsDefault = true };
++            apply.Click += (_, _) => {
++                if (offset.Value is not decimal value || value < offset.Minimum || value > offset.Maximum) { return; }
++                dialog.Close(new AudioPitchOptions(anchor.SelectedIndex == 0, (double)value,
++                    new[] { 2, 0 }[method.SelectedIndex], ReductionCents[reduction.SelectedIndex]));
++            };
++            buttons.Children.Add(cancel);
++            buttons.Children.Add(apply);
++            body.Children.Add(buttons);
++            dialog.Content = body;
++            dialog.Opened += (_, _) => anchor.Focus();
++            return dialog.ShowDialog<AudioPitchOptions?>(parent);
++        }
++
++        private async void OnMenuAudioPitch(object? sender, RoutedEventArgs args) {
++            if (tuning || !OS.IsMacOS()) { return; }
++            var vm = ViewModel.NotesViewModel;
++            var project = vm.Project;
++            var part = vm.Part;
++            if (part == null || part.notes.Count == 0) { return; }
++            var parent = RootWindow;
++            tuning = true;
++            try {
++                var selected = (vm.Selection.IsEmpty ? part.notes.ToArray() : vm.Selection.ToArray())
++                    .OrderBy(n => n.position).ToArray();
++                if (selected.Zip(selected.Skip(1)).Any(p => p.First.End > p.Second.position)) {
++                    throw new InvalidOperationException(TuneText("range"));
++                }
++                var snapshot = part.notes.Select(n => (n, n.position, n.duration, n.tone, n.lyric, n.pitch)).ToArray();
++                var file = await FilePicker.OpenFile(parent, "pianoroll.audiopitch.title", FilePicker.AudioFiles);
++                if (string.IsNullOrEmpty(file)) { return; }
++                var options = await ChooseAudioPitchOptions(parent);
++                if (options == null) { return; }
++                double startMs = project.timeAxis.TickPosToMsPos(part.position + selected[0].position);
++                double endMs = project.timeAxis.TickPosToMsPos(part.position + selected[^1].End);
++                double anchorMs = (options.AtSelection ? startMs : 0) + options.OffsetMs;
++                double fileStartMs = Math.Max(0, startMs - anchorMs - 100);
++                double fileEndMs = endMs - anchorMs + 100;
++                if (fileEndMs <= fileStartMs) { throw new InvalidDataException(AudioPitchText("empty")); }
++                double[]? f0 = null;
++                await MessageBox.ShowProcessing(parent, AudioPitchText("running"), AudioPitchText("title"), (_, token) => {
++                    f0 = ReadAudioPitch(file, fileStartMs, fileEndMs, options.Method, token);
++                });
++                if (!ReferenceEquals(vm.Project, project) || !ReferenceEquals(vm.Part, part) || !project.parts.Contains(part) ||
++                    !snapshot.SequenceEqual(part.notes.Select(n => (n, n.position, n.duration, n.tone, n.lyric, n.pitch)))) {
++                    throw new InvalidOperationException(TuneText("changed"));
++                }
++                var commands = new List<SetPitchPointsCommand>();
++                foreach (var note in selected) {
++                    double noteStartMs = project.timeAxis.TickPosToMsPos(part.position + note.position);
++                    double noteEndMs = project.timeAxis.TickPosToMsPos(part.position + note.End);
++                    var points = AudioPitchPoints(f0!, anchorMs + fileStartMs, noteStartMs, noteEndMs, note.tone, options.Reduction);
++                    if (points.Length < 2) { continue; }
++                    var pitch = new UPitch {
++                        snapFirst = false, techniques = note.pitch.techniques?.Clone(),
++                        data = points.Select(p => new PitchPoint(p[0], p[1]) { shape = PitchPointShape.l }).ToList(),
++                    };
++                    commands.Add(new SetPitchPointsCommand(part, note, ReapplyTunedTechniques(note, pitch)));
++                }
++                if (commands.Count == 0) { throw new InvalidDataException(AudioPitchText("empty")); }
++                DocManager.Inst.StartUndoGroup("command.pitch.add");
++                try {
++                    foreach (var command in commands) { DocManager.Inst.ExecuteCmd(command); }
++                } finally { DocManager.Inst.EndUndoGroup(); }
++            } catch (OperationCanceledException) {
++            } catch (Exception e) {
++                await MessageBox.ShowError(parent, e, AudioPitchText("title"));
++            } finally { tuning = false; }
++        }
++
++        private static double[] ReadAudioPitch(string file, double startMs, double endMs, int method, CancellationToken token) {
++            token.ThrowIfCancellationRequested();
++            using var reader = AudioFile.OpenFile(file);
++            if (reader.WaveFormat.Channels > 2) { throw new InvalidDataException(AudioPitchText("channels")); }
++            if (startMs >= reader.TotalTime.TotalMilliseconds || endMs <= startMs) {
++                throw new InvalidDataException(AudioPitchText("empty"));
++            }
++            ISampleProvider provider = reader.ToSampleProvider();
++            if (provider.WaveFormat.Channels == 2) { provider = provider.ToMono(); }
++            provider = provider.Skip(TimeSpan.FromMilliseconds(startMs)).Take(TimeSpan.FromMilliseconds(endMs - startMs));
++            provider = new WdlResamplingSampleProvider(provider, 16000);
++            var samples = AudioFile.GetSignal(provider).Samples;
++            token.ThrowIfCancellationRequested();
++            if (samples.Length < 1600) { throw new InvalidDataException(AudioPitchText("empty")); }
++            var f0 = Worldline.F0(samples, 16000, 10, method);
++            token.ThrowIfCancellationRequested();
++            return f0 ?? throw new InvalidDataException(AudioPitchText("failed"));
++        }
++
++        private static float[][] AudioPitchPoints(double[] f0, double audioStartMs,
++            double noteStartMs, double noteEndMs, int tone, int reduction) {
++            var points = new List<PitchPoint>();
++            int first = Math.Max(0, (int)Math.Ceiling((noteStartMs - audioStartMs) / 10));
++            int last = Math.Min(f0.Length - 1, (int)Math.Floor((noteEndMs - audioStartMs) / 10));
++            for (int i = first; i <= last; i++) {
++                if (!double.IsFinite(f0[i]) || f0[i] < 50 || f0[i] > 2000) { continue; }
++                float x = (float)(audioStartMs + i * 10 - noteStartMs);
++                float y = (float)((69 + 12 * Math.Log2(f0[i] / 440) - tone) * 10);
++                points.Add(new PitchPoint(x, y) { shape = PitchPointShape.l });
++            }
++            if (points.Count < 2) { return Array.Empty<float[]>(); }
++            return ReducePitchPoints(points, reduction).Select(p => new[] { p.X, p.Y }).ToArray();
++        }
++    }
++}
+diff --git a/OpenUtau.Test/App/AudioPitchTest.cs b/OpenUtau.Test/App/AudioPitchTest.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau.Test/App/AudioPitchTest.cs
+@@ -0,0 +1,104 @@
++using System;
++using System.Linq;
++using System.IO;
++using System.Threading;
++using NAudio.Wave;
++using System.Reflection;
++using OpenUtau.App.Controls;
++using OpenUtau.Core.Render;
++using Xunit;
++
++namespace OpenUtau.App {
++    public class AudioPitchTest {
++        private static float[][] Points(double[] f0, double audioStart, double start, double end, int tone, int reduction = 10) =>
++            (float[][])typeof(PianoRoll).GetMethod("AudioPitchPoints", BindingFlags.Static | BindingFlags.NonPublic)!
++                .Invoke(null, new object[] { f0, audioStart, start, end, tone, reduction })!;
++
++        [Fact]
++        public void AbsolutePitchAndOffsetAreMappedToNoteRelativeCoordinates() {
++            var points = Points(Enumerable.Repeat(440d, 101).ToArray(), 500, 700, 1000, 60);
++            Assert.Equal(2, points.Length);
++            Assert.Equal(0, points[0][0]);
++            Assert.Equal(300, points[^1][0]);
++            Assert.All(points, p => Assert.Equal(90, p[1]));
++        }
++
++        [Fact]
++        public void SilenceAndInvalidFramesDoNotBecomePitchNodes() {
++            var f0 = new[] { 0d, double.NaN, double.PositiveInfinity, 20d, 5000d, 440d, 440d, 0d };
++            var points = Points(f0, 0, 0, 100, 69);
++            Assert.Equal(2, points.Length);
++            Assert.Equal(50, points[0][0]);
++            Assert.Equal(60, points[1][0]);
++            Assert.Empty(Points(f0, 1000, 0, 100, 69));
++            Assert.Empty(Points(new[] { 0d, 440d, 0d }, 0, 0, 100, 69));
++        }
++
++        [Fact]
++        public void PitchTransferUsesAbsoluteTimeAcrossTempoChanges() {
++            var f0 = Enumerable.Range(0, 101).Select(i => 440 * Math.Pow(2, i / 1200d)).ToArray();
++            var a = Points(f0, 1000, 1000, 1300, 69, 0);
++            var b = Points(f0, 1000, 1300, 1900, 69, 0);
++            Assert.Equal(0, a[0][0]);
++            Assert.Equal(300, a[^1][0]);
++            Assert.Equal(0, b[0][0]);
++            Assert.Equal(600, b[^1][0]);
++            Assert.Equal(a[^1][1], b[0][1]);
++            Assert.InRange(b[^1][1], 8.99, 9.01);
++        }
++
++        [Theory]
++        [InlineData(0)]
++        [InlineData(2)]
++        public void FileReaderDownmixesResamplesAndCropsWithoutPlayback(int method) {
++            var file = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".wav");
++            try {
++                const int fs = 44100;
++                using (var writer = new WaveFileWriter(file, WaveFormat.CreateIeeeFloatWaveFormat(fs, 2))) {
++                    var samples = new float[fs * 2 * 2];
++                    for (int i = fs; i < fs * 2; i++) {
++                        double phase = 2 * Math.PI * 220 * i / fs;
++                        float value = (float)(0.4 * Math.Sin(phase) + 0.2 * Math.Sin(2 * phase) + 0.1 * Math.Sin(3 * phase));
++                        samples[i * 2] = value;
++                        samples[i * 2 + 1] = value;
++                    }
++                    writer.WriteSamples(samples, 0, samples.Length);
++                }
++                var f0 = (double[])typeof(PianoRoll).GetMethod("ReadAudioPitch", BindingFlags.NonPublic | BindingFlags.Static)!
++                    .Invoke(null, new object[] { file, 1000d, 2000d, method, CancellationToken.None })!;
++                Assert.InRange(f0.Length, 99, 102);
++                var voiced = f0.Skip(10).Take(70).Where(x => x > 0).Order().ToArray();
++                Assert.True(voiced.Length > 50);
++                Assert.InRange(voiced[voiced.Length / 2], 217, 223);
++            } finally { File.Delete(file); }
++        }
++
++        [Fact]
++        public void CancelBeforeAnalysisDoesNotOpenTheFile() {
++            var error = Assert.Throws<TargetInvocationException>(() => typeof(PianoRoll)
++                .GetMethod("ReadAudioPitch", BindingFlags.NonPublic | BindingFlags.Static)!
++                .Invoke(null, new object[] { "missing.wav", 0d, 1000d, 2, new CancellationToken(true) }));
++            Assert.IsAssignableFrom<OperationCanceledException>(error.InnerException);
++        }
++
++        [Theory]
++        [InlineData(0)]
++        [InlineData(2)]
++        public void NativeDetectorRecognizesHarmonicVoiceWithoutPlayback(int method) {
++            const int fs = 16000;
++            var samples = Enumerable.Range(0, fs).Select(i => {
++                double t = (double)i / fs;
++                return (float)(0.4 * Math.Sin(2 * Math.PI * 220 * t) +
++                    0.2 * Math.Sin(2 * Math.PI * 440 * t) + 0.1 * Math.Sin(2 * Math.PI * 660 * t));
++            }).ToArray();
++            var f0 = Worldline.F0(samples, fs, 10, method);
++            Assert.NotNull(f0);
++            var voiced = f0.Skip(10).Take(70).Where(x => x > 0).Order().ToArray();
++            Assert.True(voiced.Length > 40);
++            Assert.InRange(voiced[voiced.Length / 2], 217, 223);
++            var points = Points(f0, 0, 100, 800, 57);
++            Assert.NotEmpty(points);
++            Assert.All(points, p => Assert.InRange(p[1], -2, 2));
++        }
++    }
++}

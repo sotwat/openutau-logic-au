@@ -26,7 +26,8 @@ test "$official_hash" = 1b3fa0bf68160970f6f83d3233efdca52269538ff7c9780cedb0688d
 test "$official_hash" = 622343e85d8728445b990ce4053b1883f471f25d263f8b0f82340151614b5451 || \
 test "$official_hash" = e44e2c12cf4686668a06153d4d191397a935b1598fed50bda9161aadb6d42e6c || \
 test "$official_hash" = 721d280152da239995f4b5fcee4f734ae7ab31de2c4c358d8d5e3dfcf0c8a147 || \
-test "$official_hash" = 7e02c12ad8746464dc44ab1bd84b3644d0d4835fc88c68a8c3c4d97392f3b20c || {
+test "$official_hash" = 7e02c12ad8746464dc44ab1bd84b3644d0d4835fc88c68a8c3c4d97392f3b20c || \
+test "$official_hash" = 776f6f024570b3569c5a4049080451f706c923272819ed5bf67b84bc72ef6ea3 || {
     echo 'Expected official or current OpenUtau AU 0.1.576 app.' >&2
     exit 1
 }
@@ -123,6 +124,14 @@ if git -C "$source_dir" apply --check "$pinch_axis_lock_patch" 2>/dev/null; then
     git -C "$source_dir" apply "$pinch_axis_lock_patch"
 elif ! git -C "$source_dir" apply --reverse --check "$pinch_axis_lock_patch" 2>/dev/null; then
     echo 'Source differs from the expected pinch axis lock patch state.' >&2
+    exit 1
+fi
+
+audio_pitch_patch="$repo/patches/openutau-audio-pitch-transfer-0.1.576.patch"
+if git -C "$source_dir" apply --check "$audio_pitch_patch" 2>/dev/null; then
+    git -C "$source_dir" apply "$audio_pitch_patch"
+elif ! git -C "$source_dir" apply --reverse --check "$audio_pitch_patch" 2>/dev/null; then
+    echo 'Source differs from the expected audio pitch transfer patch state.' >&2
     exit 1
 fi
 

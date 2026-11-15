@@ -89,6 +89,7 @@ diff --git a/OpenUtau/ViewModels/TracksViewModel.cs b/OpenUtau/ViewModels/Tracks
              bool recenter = true;
              if (TickOffset == 0 && position.X < 0.1) {
 diff --git a/OpenUtau.Test/App/TrackPinchTest.cs b/OpenUtau.Test/App/TrackPinchTest.cs
+new file mode 100644
 --- /dev/null
 +++ b/OpenUtau.Test/App/TrackPinchTest.cs
 @@ -0,0 +1,46 @@
