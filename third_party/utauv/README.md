@@ -1,4 +1,4 @@
-# UtauV Auto Pitch
+# UtauV ports
 
 Source: [emeraldsingers/UtauV 0.0.1.6](https://github.com/emeraldsingers/UtauV/tree/0.0.1.6), commit `dd35b832977abe025c76c3bda02eb16171fc542b`. The MIT notice is preserved in [LICENSE.txt](LICENSE.txt) and installed as `Contents/Resources/AutoTuning/licenses/UtauV-LICENSE.txt`.
 
@@ -13,3 +13,5 @@ The model is downloaded on first use, not redistributed in this repository or ap
 - Contents: `oudep.yaml`, `autopitch.onnx`, `autopitch.onnx.config.json`, `autopitch.onnx.vocab.json`
 
 The release tag includes `1.3`, but this archive's metadata declares **1.2**. Code licensing and model redistribution permission are separate; the archive contained no model license at inspection on 2026-11-16.
+
+COEIROINK support also ports the eight files in `OpenUtau.Core/Coeiroink/` and their four test files from the same release. The host adds singer discovery/type/renderer registration and splits phrases at style changes. The port adds cancellation to ONNX runs and writes audio caches by atomic replacement. This code uses the same MIT notice above. The separate ONNX exporter has no license file at inspection; its code is not redistributed here. COEIROINK voice models are not bundled.

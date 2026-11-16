@@ -1,0 +1,1821 @@
+diff --git a/OpenUtau.Core/Classic/ClassicSingerLoader.cs b/OpenUtau.Core/Classic/ClassicSingerLoader.cs
+--- a/OpenUtau.Core/Classic/ClassicSingerLoader.cs
++++ b/OpenUtau.Core/Classic/ClassicSingerLoader.cs
+@@ -13,6 +13,8 @@
+                     return new Core.DiffSinger.DiffSingerSinger(v) as USinger;
+                 case USingerType.Voicevox:
+                     return new Core.Voicevox.VoicevoxSinger(v) as USinger;
++                case USingerType.Coeiroink:
++                    return new Core.Coeiroink.CoeiroinkSinger(v);
+                 default:
+                     return new ClassicSinger(v) as USinger;
+             }
+diff --git a/OpenUtau.Core/Classic/VoicebankLoader.cs b/OpenUtau.Core/Classic/VoicebankLoader.cs
+--- a/OpenUtau.Core/Classic/VoicebankLoader.cs
++++ b/OpenUtau.Core/Classic/VoicebankLoader.cs
+@@ -47,6 +47,7 @@
+             if (!Directory.Exists(basePath)) {
+                 return result;
+             }
++            EnsureCoeiroinkCharacterFiles();
+             IEnumerable<string> files;
+             if (Preferences.Default.LoadDeepFolderSinger) {
+                 files = Directory.EnumerateFiles(basePath, kCharTxt, SearchOption.AllDirectories);
+@@ -68,6 +69,32 @@
+                 })
+                 .OfType<Voicebank>());
+             return result;
++        }
++
++        void EnsureCoeiroinkCharacterFiles() {
++            try {
++                var option = Preferences.Default.LoadDeepFolderSinger ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
++                foreach (var dir in Directory.EnumerateDirectories(basePath, "*", option).ToList()) {
++                    if (File.Exists(Path.Combine(dir, kCharTxt)) || !Core.Coeiroink.CoeiroinkConfig.IsCoeiroinkFolder(dir)) {
++                        continue;
++                    }
++                    var config = Core.Coeiroink.CoeiroinkConfig.Load(dir);
++                    File.WriteAllText(Path.Combine(dir, kCharTxt), $"name={config.SpeakerName}{Environment.NewLine}", new UTF8Encoding(false));
++                    var yamlFile = Path.Combine(dir, kCharYaml);
++                    if (!File.Exists(yamlFile)) {
++                        var bankConfig = new VoicebankConfig() {
++                            SingerType = SingerTypeUtils.SingerTypeNames[USingerType.Coeiroink],
++                            TextFileEncoding = Encoding.UTF8.WebName,
++                            DefaultPhonemizer = typeof(Core.Coeiroink.CoeiroinkPhonemizer).FullName,
++                        };
++                        using (var stream = File.Create(yamlFile)) {
++                            bankConfig.Save(stream);
++                        }
++                    }
++                }
++            } catch (Exception e) {
++                Log.Error(e, "Failed to prepare COEIROINK voicebank files.");
++            }
+         }
+ 
+         public static void LoadVoicebank(Voicebank voicebank) {
+@@ -100,6 +127,8 @@
+                     voicebank.SingerType = USingerType.Enunu;
+                 } else if (File.Exists(dsconfigFile)) {
+                     voicebank.SingerType = USingerType.DiffSinger;
++                } else if (Core.Coeiroink.CoeiroinkConfig.IsCoeiroinkFolder(dir)) {
++                    voicebank.SingerType = USingerType.Coeiroink;
+                 } else if (voicebank.SingerType != USingerType.Enunu) {
+                     voicebank.SingerType = USingerType.Classic;
+                 }
+diff --git a/OpenUtau.Core/Coeiroink/CoeiroinkConfig.cs b/OpenUtau.Core/Coeiroink/CoeiroinkConfig.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau.Core/Coeiroink/CoeiroinkConfig.cs
+@@ -0,0 +1,115 @@
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Linq;
++using System.Text.Json;
++using System.Text.RegularExpressions;
++
++namespace OpenUtau.Core.Coeiroink {
++    public class CoeiroinkStyle {
++        public string Name = string.Empty;
++        public int Id;
++        public string ModelDir = string.Empty;
++        public string Icon = string.Empty;
++
++        public string DurationModelPath => Path.Combine(ModelDir, CoeiroinkConfig.DurationModelFile);
++        public string SynthModelPath => Path.Combine(ModelDir, CoeiroinkConfig.SynthModelFile);
++        public string ConfigPath => Path.Combine(ModelDir, "config.yaml");
++        public bool IsExported => File.Exists(DurationModelPath) && File.Exists(SynthModelPath);
++    }
++
++    public class CoeiroinkConfig {
++        public const string ExporterUrl = "https://github.com/emeraldsingers/coeiroink-onnx-exporter";
++        public const string MetasFile = "metas.json";
++        public const string DurationModelFile = "duration.onnx";
++        public const string SynthModelFile = "synth.onnx";
++
++        public string SpeakerName = string.Empty;
++        public string SpeakerUuid = string.Empty;
++        public string Version = string.Empty;
++        public List<CoeiroinkStyle> Styles = new List<CoeiroinkStyle>();
++
++        public static bool IsCoeiroinkFolder(string dir) {
++            return File.Exists(Path.Combine(dir, MetasFile)) && Directory.Exists(Path.Combine(dir, "model"));
++        }
++
++        public static CoeiroinkConfig Load(string dir) {
++            var config = new CoeiroinkConfig();
++            using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, MetasFile)));
++            var root = doc.RootElement;
++            config.SpeakerName = root.TryGetProperty("speakerName", out var name) ? name.GetString() ?? string.Empty : string.Empty;
++            config.SpeakerUuid = root.TryGetProperty("speakerUuid", out var uuid) ? uuid.GetString() ?? string.Empty : string.Empty;
++            config.Version = root.TryGetProperty("version", out var version) ? version.GetString() ?? string.Empty : string.Empty;
++            if (root.TryGetProperty("styles", out var styles)) {
++                foreach (var style in styles.EnumerateArray()) {
++                    int id = style.GetProperty("styleId").GetInt32();
++                    config.Styles.Add(new CoeiroinkStyle {
++                        Name = style.GetProperty("styleName").GetString() ?? id.ToString(),
++                        Id = id,
++                        ModelDir = Path.Combine(dir, "model", id.ToString()),
++                        Icon = Path.Combine(dir, "icons", $"{id}.png"),
++                    });
++                }
++            }
++            return config;
++        }
++    }
++
++    public class CoeiroinkModelConfig {
++        public string[] Tokens = Array.Empty<string>();
++        public int SampleRate = 44100;
++        public int HopLength = 512;
++        public int HiddenChannels = 192;
++
++        public static CoeiroinkModelConfig Load(string path) {
++            var lines = File.ReadAllLines(path);
++            var config = new CoeiroinkModelConfig();
++            var tokens = new List<string>();
++            bool inTokens = false;
++            foreach (var line in lines) {
++                if (inTokens) {
++                    var match = Regex.Match(line, @"^-\s*(.+?)\s*$");
++                    if (match.Success) {
++                        tokens.Add(Unquote(match.Groups[1].Value));
++                        continue;
++                    }
++                    inTokens = false;
++                }
++                if (line.StartsWith("token_list:")) {
++                    inTokens = true;
++                    continue;
++                }
++                config.SampleRate = ReadInt(line, @"^\s+sampling_rate:\s*(\d+)", config.SampleRate);
++                config.HopLength = ReadInt(line, @"^\s+hop_length:\s*(\d+)", config.HopLength);
++                config.HiddenChannels = ReadInt(line, @"^\s+hidden_channels:\s*(\d+)", config.HiddenChannels);
++            }
++            config.Tokens = tokens.ToArray();
++            if (config.Tokens.Length == 0) {
++                throw new InvalidDataException($"token_list was not found in {path}");
++            }
++            return config;
++        }
++
++        static int ReadInt(string line, string pattern, int fallback) {
++            var match = Regex.Match(line, pattern);
++            return match.Success ? int.Parse(match.Groups[1].Value) : fallback;
++        }
++
++        static string Unquote(string value) {
++            if (value.Length >= 2 && (value[0] == '\'' && value[^1] == '\'' || value[0] == '"' && value[^1] == '"')) {
++                return value.Substring(1, value.Length - 2).Replace("''", "'");
++            }
++            return value;
++        }
++
++        public double FrameMs => HopLength * 1000.0 / SampleRate;
++
++        public Dictionary<string, long> TokenIds() {
++            var map = new Dictionary<string, long>();
++            for (int i = 0; i < Tokens.Length; i++) {
++                map.TryAdd(Tokens[i], i);
++            }
++            return map;
++        }
++    }
++}
+diff --git a/OpenUtau.Core/Coeiroink/CoeiroinkKana.cs b/OpenUtau.Core/Coeiroink/CoeiroinkKana.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau.Core/Coeiroink/CoeiroinkKana.cs
+@@ -0,0 +1,249 @@
++using System;
++using System.Collections.Generic;
++using System.Linq;
++using System.Text;
++using System.Text.RegularExpressions;
++
++namespace OpenUtau.Core.Coeiroink {
++    public readonly struct CoeiroinkMora {
++        public readonly string? Consonant;
++        public readonly string Vowel;
++
++        public CoeiroinkMora(string? consonant, string vowel) {
++            Consonant = string.IsNullOrEmpty(consonant) ? null : consonant;
++            Vowel = vowel;
++        }
++
++        public bool IsGeminate => Vowel == CoeiroinkKana.Geminate;
++
++        public override string ToString() => Consonant == null ? Vowel : $"{Consonant} {Vowel}";
++    }
++
++    public static class CoeiroinkKana {
++        public const string Geminate = "cl";
++        public const string Nasal = "N";
++
++        static readonly string[] vowelTokens = { "a", "i", "u", "e", "o" };
++        static readonly HashSet<string> consonantTokens = new HashSet<string> {
++            "k", "s", "sh", "t", "ch", "ts", "n", "h", "f", "m", "y", "r", "w", "g", "z", "j", "d", "b", "p", "v",
++            "ky", "gy", "ny", "hy", "my", "by", "py", "ry", "dy", "ty",
++        };
++
++        static readonly Dictionary<string, (string? c, string v)> table = BuildTable();
++        static readonly Regex romaji = new Regex("^(ky|gy|ny|hy|my|by|py|ry|dy|ty|sh|ch|ts|[kstnhfmyrwgzjdbpv])?([aiueo])$", RegexOptions.Compiled);
++
++        public static bool IsConsonantToken(string text) {
++            return consonantTokens.Contains(text.Trim());
++        }
++
++        public static double DefaultConsonantMs(string consonant) {
++            switch (consonant) {
++                case "k": case "t": case "p": case "g": case "d": case "b":
++                    return 50;
++                case "ch": case "ts":
++                    return 100;
++                case "s": case "sh": case "h": case "f": case "z": case "j": case "hy": case "v":
++                    return 90;
++                case "y": case "w":
++                    return 50;
++                default:
++                    return 65;
++            }
++        }
++
++        public static IEnumerable<string> AllKana => table.Keys.Concat(new[] { "ん", "っ" });
++
++        static Dictionary<string, (string? c, string v)> BuildTable() {
++            var map = new Dictionary<string, (string? c, string v)>();
++            void Row(string? consonant, string kana) {
++                for (int i = 0; i < 5; i++) {
++                    if (i < kana.Length && kana[i] != '-') {
++                        map[kana[i].ToString()] = (consonant, vowelTokens[i]);
++                    }
++                }
++            }
++            Row(null, "あいうえお");
++            Row("k", "かきくけこ");
++            Row("s", "さしすせそ");
++            Row("t", "たちつてと");
++            Row("n", "なにぬねの");
++            Row("h", "はひふへほ");
++            Row("m", "まみむめも");
++            Row("y", "や-ゆ-よ");
++            Row("r", "らりるれろ");
++            Row("w", "わ---を");
++            Row("g", "がぎぐげご");
++            Row("z", "ざじずぜぞ");
++            Row("d", "だぢづでど");
++            Row("b", "ばびぶべぼ");
++            Row("p", "ぱぴぷぺぽ");
++            map["を"] = (null, "o");
++            map["し"] = ("sh", "i");
++            map["ち"] = ("ch", "i");
++            map["つ"] = ("ts", "u");
++            map["ふ"] = ("f", "u");
++            map["じ"] = ("j", "i");
++            map["ぢ"] = ("j", "i");
++            map["づ"] = ("z", "u");
++            map["ゔ"] = ("v", "u");
++            map["ゐ"] = (null, "i");
++            map["ゑ"] = (null, "e");
++
++            var smallVowels = new Dictionary<char, string> { ['ぁ'] = "a", ['ぃ'] = "i", ['ぅ'] = "u", ['ぇ'] = "e", ['ぉ'] = "o" };
++            var smallYa = new Dictionary<char, string> { ['ゃ'] = "a", ['ゅ'] = "u", ['ょ'] = "o" };
++            foreach (var (small, vowel) in smallVowels) {
++                map[small.ToString()] = (null, vowel);
++            }
++            map["ゃ"] = ("y", "a");
++            map["ゅ"] = ("y", "u");
++            map["ょ"] = ("y", "o");
++            map["ゎ"] = ("w", "a");
++
++            var palatal = new Dictionary<char, string> {
++                ['き'] = "ky", ['し'] = "sh", ['ち'] = "ch", ['に'] = "ny", ['ひ'] = "hy", ['み'] = "my",
++                ['り'] = "ry", ['ぎ'] = "gy", ['じ'] = "j", ['ぢ'] = "j", ['び'] = "by", ['ぴ'] = "py",
++                ['て'] = "ty", ['で'] = "dy", ['ゔ'] = "v",
++            };
++            foreach (var (baseKana, consonant) in palatal) {
++                foreach (var (small, vowel) in smallYa) {
++                    map[$"{baseKana}{small}"] = (consonant, vowel);
++                }
++            }
++            foreach (var (baseKana, consonant) in palatal) {
++                foreach (var (small, vowel) in smallVowels) {
++                    if (consonant == "ty" || consonant == "dy") {
++                        map[$"{baseKana}{small}"] = (consonant == "ty" ? "t" : "d", vowel);
++                    } else {
++                        map[$"{baseKana}{small}"] = (consonant, vowel);
++                    }
++                }
++            }
++            foreach (var (small, vowel) in smallVowels) {
++                map[$"ふ{small}"] = ("f", vowel);
++                map[$"つ{small}"] = ("ts", vowel);
++                map[$"う{small}"] = ("w", vowel);
++                map[$"く{small}"] = ("k", vowel);
++                map[$"ぐ{small}"] = ("g", vowel);
++            }
++            map["とぅ"] = ("t", "u");
++            map["どぅ"] = ("d", "u");
++            map["いぇ"] = ("y", "e");
++            return map;
++        }
++
++        public static string ToHiragana(string text) {
++            var sb = new StringBuilder(text.Length);
++            foreach (var c in text) {
++                if (c >= 'ァ' && c <= 'ヶ') {
++                    sb.Append((char)(c - 0x60));
++                } else {
++                    sb.Append(c);
++                }
++            }
++            return sb.ToString();
++        }
++
++        public const string PausePhoneme = "pau";
++
++        public static bool IsRest(string lyric) {
++            var text = lyric.Trim();
++            return text.Length == 0
++                || text.Equals("R", StringComparison.OrdinalIgnoreCase)
++                || text.Equals("SP", StringComparison.OrdinalIgnoreCase)
++                || text.Equals("AP", StringComparison.OrdinalIgnoreCase)
++                || text.Equals("pau", StringComparison.OrdinalIgnoreCase)
++                || text.Equals("br", StringComparison.OrdinalIgnoreCase);
++        }
++
++        public static bool IsExtension(string lyric) {
++            var text = lyric.Trim();
++            return text == "ー" || text == "-" || text.StartsWith("+");
++        }
++
++        public static bool TryParse(string lyric, out CoeiroinkMora[] moras) {
++            moras = Array.Empty<CoeiroinkMora>();
++            if (string.IsNullOrWhiteSpace(lyric)) {
++                return false;
++            }
++            var text = lyric.Normalize(NormalizationForm.FormKC).Trim();
++            if (TryParseKana(ToHiragana(text), out moras)) {
++                return true;
++            }
++            if (TryParseTokens(text.ToLowerInvariant(), out moras)) {
++                return true;
++            }
++            return false;
++        }
++
++        static bool TryParseKana(string text, out CoeiroinkMora[] moras) {
++            var result = new List<CoeiroinkMora>();
++            moras = Array.Empty<CoeiroinkMora>();
++            int i = 0;
++            while (i < text.Length) {
++                char c = text[i];
++                if (c == 'ん') {
++                    result.Add(new CoeiroinkMora(null, Nasal));
++                    i++;
++                    continue;
++                }
++                if (c == 'っ') {
++                    result.Add(new CoeiroinkMora(null, Geminate));
++                    i++;
++                    continue;
++                }
++                if (c == 'ー' && result.Count > 0 && !result[^1].IsGeminate && result[^1].Vowel != Nasal) {
++                    result.Add(new CoeiroinkMora(null, result[^1].Vowel));
++                    i++;
++                    continue;
++                }
++                if (i + 1 < text.Length && table.TryGetValue(text.Substring(i, 2), out var pair)) {
++                    result.Add(new CoeiroinkMora(pair.c, pair.v));
++                    i += 2;
++                    continue;
++                }
++                if (table.TryGetValue(c.ToString(), out var single)) {
++                    result.Add(new CoeiroinkMora(single.c, single.v));
++                    i++;
++                    continue;
++                }
++                return false;
++            }
++            moras = result.ToArray();
++            return moras.Length > 0;
++        }
++
++        static bool TryParseTokens(string text, out CoeiroinkMora[] moras) {
++            moras = Array.Empty<CoeiroinkMora>();
++            if (text == "n") {
++                moras = new[] { new CoeiroinkMora(null, Nasal) };
++                return true;
++            }
++            var match = romaji.Match(text.ToLowerInvariant());
++            if (match.Success) {
++                moras = new[] { new CoeiroinkMora(match.Groups[1].Success ? match.Groups[1].Value : null, match.Groups[2].Value) };
++                return true;
++            }
++            var result = new List<CoeiroinkMora>();
++            string? pending = null;
++            foreach (var raw in text.Split(' ', StringSplitOptions.RemoveEmptyEntries)) {
++                var part = raw == Nasal ? raw : raw.ToLowerInvariant();
++                if (consonantTokens.Contains(part)) {
++                    if (pending != null) {
++                        return false;
++                    }
++                    pending = part;
++                } else if (vowelTokens.Contains(part) || part == Nasal || part == Geminate) {
++                    result.Add(new CoeiroinkMora(pending, part));
++                    pending = null;
++                } else {
++                    return false;
++                }
++            }
++            if (pending != null || result.Count == 0) {
++                return false;
++            }
++            moras = result.ToArray();
++            return true;
++        }
++    }
++}
+diff --git a/OpenUtau.Core/Coeiroink/CoeiroinkModel.cs b/OpenUtau.Core/Coeiroink/CoeiroinkModel.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau.Core/Coeiroink/CoeiroinkModel.cs
+@@ -0,0 +1,120 @@
++using System;
++using System.Collections.Concurrent;
++using System.Collections.Generic;
++using System.IO;
++using System.Linq;
++using System.Threading;
++using Microsoft.ML.OnnxRuntime;
++using Microsoft.ML.OnnxRuntime.Tensors;
++using OpenUtau.Core.Util;
++
++namespace OpenUtau.Core.Coeiroink {
++    public class CoeiroinkModel : IDisposable {
++        public const float FlowNoiseScale = 0.333f;
++        public const float DurationNoiseScale = 0.333f;
++
++        static readonly ConcurrentDictionary<string, CoeiroinkModel> cache = new ConcurrentDictionary<string, CoeiroinkModel>();
++
++        public readonly CoeiroinkModelConfig Config;
++        public readonly Dictionary<string, long> TokenIds;
++        readonly InferenceSession durationSession;
++        readonly InferenceSession synthSession;
++        readonly object runLock = new object();
++
++        CoeiroinkModel(CoeiroinkStyle style) {
++            if (!style.IsExported) {
++                throw new FileNotFoundException(
++                    $"ONNX models for the COEIROINK style \"{style.Name}\" were not found in {style.ModelDir}. " +
++                    $"Export them with the tool from {CoeiroinkConfig.ExporterUrl}");
++            }
++            Config = CoeiroinkModelConfig.Load(style.ConfigPath);
++            TokenIds = Config.TokenIds();
++            using var scope = Onnx.EnterDmlScope();
++            durationSession = Onnx.getInferenceSession(style.DurationModelPath);
++            synthSession = Onnx.getInferenceSession(style.SynthModelPath);
++        }
++
++        public static CoeiroinkModel Get(CoeiroinkStyle style) {
++            return cache.GetOrAdd(style.ModelDir, _ => new CoeiroinkModel(style));
++        }
++
++        public static void Evict(string modelDir) {
++            if (cache.TryRemove(modelDir, out var model)) {
++                model.Dispose();
++            }
++        }
++
++        public bool TryEncode(IEnumerable<string> tokens, out long[] ids) {
++            var list = new List<long>();
++            foreach (var token in tokens) {
++                if (!TokenIds.TryGetValue(token, out var id)) {
++                    ids = Array.Empty<long>();
++                    return false;
++                }
++                list.Add(id);
++            }
++            ids = list.ToArray();
++            return true;
++        }
++
++        public float[] PredictDurations(long[] ids, int seed, CancellationToken token = default) {
++            var random = new Random(seed);
++            var noise = new DenseTensor<float>(new[] { 1, 2, ids.Length });
++            for (int i = 0; i < noise.Length; i++) {
++                noise.SetValue(i, (float)(NextGaussian(random) * DurationNoiseScale));
++            }
++            var inputs = new List<NamedOnnxValue> {
++                NamedOnnxValue.CreateFromTensor("text", new DenseTensor<long>(ids, new[] { 1, ids.Length })),
++                NamedOnnxValue.CreateFromTensor("noise", noise),
++            };
++            lock (runLock) {
++                using var scope = Onnx.EnterDmlScope();
++                token.ThrowIfCancellationRequested();
++                using var options = new RunOptions();
++                using var registration = token.Register(() => options.Terminate = true);
++                using var results = durationSession.Run(inputs, durationSession.OutputNames, options);
++                token.ThrowIfCancellationRequested();
++                var output = results.First().AsTensor<float>().ToArray();
++                if (output.Any(v => !float.IsFinite(v))) { throw new InvalidDataException("COEIROINK returned non-finite samples."); }
++                return output;
++            }
++        }
++
++        public float[] Synthesize(long[] ids, int[] frames, int seed, float noiseScale = FlowNoiseScale, CancellationToken token = default) {
++            int totalFrames = frames.Sum();
++            var random = new Random(seed);
++            var noise = new DenseTensor<float>(new[] { 1, Config.HiddenChannels, totalFrames });
++            for (int i = 0; i < noise.Length; i++) {
++                noise.SetValue(i, (float)NextGaussian(random));
++            }
++            var inputs = new List<NamedOnnxValue> {
++                NamedOnnxValue.CreateFromTensor("text", new DenseTensor<long>(ids, new[] { 1, ids.Length })),
++                NamedOnnxValue.CreateFromTensor("duration", new DenseTensor<float>(frames.Select(f => (float)f).ToArray(), new[] { ids.Length })),
++                NamedOnnxValue.CreateFromTensor("noise", noise),
++                NamedOnnxValue.CreateFromTensor("noise_scale", new DenseTensor<float>(new[] { noiseScale }, Array.Empty<int>())),
++            };
++            lock (runLock) {
++                using var scope = Onnx.EnterDmlScope();
++                token.ThrowIfCancellationRequested();
++                using var options = new RunOptions();
++                using var registration = token.Register(() => options.Terminate = true);
++                using var results = synthSession.Run(inputs, synthSession.OutputNames, options);
++                token.ThrowIfCancellationRequested();
++                var output = results.First().AsTensor<float>().ToArray();
++                if (output.Any(v => !float.IsFinite(v))) { throw new InvalidDataException("COEIROINK returned non-finite samples."); }
++                return output;
++            }
++        }
++
++        static double NextGaussian(Random random) {
++            double u1 = 1.0 - random.NextDouble();
++            double u2 = random.NextDouble();
++            return Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2);
++        }
++
++        public void Dispose() {
++            durationSession.Dispose();
++            synthSession.Dispose();
++        }
++    }
++}
+diff --git a/OpenUtau.Core/Coeiroink/CoeiroinkPhonemizer.cs b/OpenUtau.Core/Coeiroink/CoeiroinkPhonemizer.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau.Core/Coeiroink/CoeiroinkPhonemizer.cs
+@@ -0,0 +1,40 @@
++using System;
++using System.Collections.Generic;
++using OpenUtau.Api;
++using OpenUtau.Core.Ustx;
++
++namespace OpenUtau.Core.Coeiroink {
++    [Phonemizer("COEIROINK Japanese Phonemizer", "COEIROINK JA", language: "JA")]
++    public class CoeiroinkPhonemizer : Phonemizer {
++        public override void SetSinger(USinger singer) { }
++
++        public override Result Process(Note[] notes, Note? prev, Note? next, Note? prevNeighbour, Note? nextNeighbour, Note[] prevNeighbours) {
++            var phonemes = new List<Phoneme>();
++            foreach (var note in notes) {
++                var lyric = string.IsNullOrEmpty(note.phoneticHint) ? note.lyric : note.phoneticHint;
++                if (string.IsNullOrWhiteSpace(lyric) || CoeiroinkKana.IsExtension(lyric)) {
++                    continue;
++                }
++                if (CoeiroinkKana.IsRest(lyric)) {
++                    phonemes.Add(new Phoneme { phoneme = CoeiroinkKana.PausePhoneme, position = note.position - notes[0].position });
++                    continue;
++                }
++                if (!CoeiroinkKana.TryParse(lyric, out var moras)) {
++                    throw new Exception($"Unrecognized lyric \"{lyric}\"");
++                }
++                int offset = note.position - notes[0].position;
++                if (moras.Length == 1) {
++                    phonemes.Add(new Phoneme { phoneme = lyric.Trim(), position = offset });
++                    continue;
++                }
++                for (int i = 0; i < moras.Length; i++) {
++                    phonemes.Add(new Phoneme {
++                        phoneme = moras[i].ToString(),
++                        position = offset + note.duration * i / moras.Length,
++                    });
++                }
++            }
++            return new Result { phonemes = phonemes.ToArray() };
++        }
++    }
++}
+diff --git a/OpenUtau.Core/Coeiroink/CoeiroinkPlusPhonemizer.cs b/OpenUtau.Core/Coeiroink/CoeiroinkPlusPhonemizer.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau.Core/Coeiroink/CoeiroinkPlusPhonemizer.cs
+@@ -0,0 +1,49 @@
++using System;
++using System.Collections.Generic;
++using OpenUtau.Api;
++using OpenUtau.Core.Ustx;
++
++namespace OpenUtau.Core.Coeiroink {
++    [Phonemizer("COEIROINK Japanese Phonemizer Plus", "COEIROINK JA+", language: "JA")]
++    public class CoeiroinkPlusPhonemizer : Phonemizer {
++        public override void SetSinger(USinger singer) { }
++
++        public override Result Process(Note[] notes, Note? prev, Note? next, Note? prevNeighbour, Note? nextNeighbour, Note[] prevNeighbours) {
++            var phonemes = new List<Phoneme>();
++            foreach (var note in notes) {
++                var lyric = string.IsNullOrEmpty(note.phoneticHint) ? note.lyric : note.phoneticHint;
++                if (string.IsNullOrWhiteSpace(lyric) || CoeiroinkKana.IsExtension(lyric)) {
++                    continue;
++                }
++                if (CoeiroinkKana.IsRest(lyric)) {
++                    phonemes.Add(new Phoneme { phoneme = CoeiroinkKana.PausePhoneme, position = note.position - notes[0].position });
++                    continue;
++                }
++                if (!CoeiroinkKana.TryParse(lyric, out var moras)) {
++                    throw new Exception($"Unrecognized lyric \"{lyric}\"");
++                }
++                int offset = note.position - notes[0].position;
++                for (int i = 0; i < moras.Length; i++) {
++                    int position = offset + note.duration * i / moras.Length;
++                    var mora = moras[i];
++                    if (mora.Consonant == null || mora.IsGeminate) {
++                        phonemes.Add(new Phoneme { phoneme = moras.Length == 1 ? lyric.Trim() : mora.ToString(), position = position });
++                        continue;
++                    }
++                    int moraDuration = note.duration / moras.Length;
++                    int lead = ConsonantTicks(mora.Consonant, notes[0].position + position, moraDuration);
++                    phonemes.Add(new Phoneme { phoneme = mora.Consonant + mora.Vowel, position = position });
++                    phonemes.Add(new Phoneme { phoneme = mora.Vowel, position = position + lead });
++                }
++            }
++            return new Result { phonemes = phonemes.ToArray() };
++        }
++
++        int ConsonantTicks(string consonant, int tickPosition, int moraDuration) {
++            double startMs = timeAxis.TickPosToMsPos(tickPosition);
++            double consonantMs = CoeiroinkKana.DefaultConsonantMs(consonant);
++            int ticks = timeAxis.MsPosToTickPos(startMs + consonantMs) - tickPosition;
++            return Math.Clamp(ticks, 1, Math.Max(1, moraDuration / 2));
++        }
++    }
++}
+diff --git a/OpenUtau.Core/Coeiroink/CoeiroinkRenderer.cs b/OpenUtau.Core/Coeiroink/CoeiroinkRenderer.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau.Core/Coeiroink/CoeiroinkRenderer.cs
+@@ -0,0 +1,277 @@
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Linq;
++using System.Threading;
++using System.Threading.Tasks;
++using K4os.Hash.xxHash;
++using NAudio.Wave;
++using OpenUtau.Classic.Hifisampler;
++using OpenUtau.Core.Format;
++using OpenUtau.Core.Render;
++using OpenUtau.Core.Ustx;
++using Serilog;
++
++namespace OpenUtau.Core.Coeiroink {
++    public class CoeiroinkRenderer : IRenderer {
++        public const double HeadMs = 160;
++        public const double TailMs = 120;
++        const int OutputSampleRate = 44100;
++        const int CurveInterval = 5;
++        const int CacheVersion = 5;
++
++        static readonly HashSet<string> supportedExp = new HashSet<string>() {
++            Format.Ustx.DYN,
++            Format.Ustx.PITD,
++            Format.Ustx.CLR,
++            Format.Ustx.GENC,
++        };
++
++        static readonly object lockObj = new object();
++
++        public USingerType SingerType => USingerType.Coeiroink;
++
++        public bool SupportsRenderPitch => false;
++
++        public bool SupportsExpression(UExpressionDescriptor descriptor) {
++            return supportedExp.Contains(descriptor.abbr);
++        }
++
++        public (double HeadMs, double TailMs) PhrasePadding(USinger singer, IEnumerable<UPhoneme> phonemes) {
++            return (HeadMs, TailMs);
++        }
++
++        public RenderResult Layout(RenderPhrase phrase) {
++            return new RenderResult() {
++                leadingMs = HeadMs,
++                positionMs = phrase.positionMs,
++                estimatedLengthMs = HeadMs + phrase.durationMs + TailMs,
++            };
++        }
++
++        public Task<RenderResult> Render(RenderPhrase phrase, Progress progress, int trackNo, CancellationTokenSource cancellation, bool isPreRender, RenderPhraseEvents? renderEvents = null) {
++            return Task.Run(() => {
++                lock (lockObj) {
++                    if (cancellation.IsCancellationRequested) {
++                        return new RenderResult();
++                    }
++                    string progressInfo = $"Track {trackNo + 1}: {this} \"{string.Join(" ", phrase.phones.Select(p => p.phoneme))}\"";
++                    progress.Complete(0, progressInfo);
++                    var wavPath = Path.Join(PathManager.Inst.CachePath, $"coe-{phrase.hash:x16}-{CacheVersion}.wav");
++                    phrase.AddCacheFile(wavPath);
++                    var result = Layout(phrase);
++                    if (!File.Exists(wavPath)) {
++                        var samples = Synthesize(phrase, cancellation);
++                        if (samples == null || cancellation.IsCancellationRequested) {
++                            return new RenderResult();
++                        }
++                        if (samples.Length == 0 || samples.Any(v => !float.IsFinite(v))) {
++                            throw new InvalidDataException("COEIROINK returned invalid audio.");
++                        }
++                        string temporary = wavPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
++                        try {
++                            Wave.WriteMono16Wav(temporary, samples);
++                            cancellation.Token.ThrowIfCancellationRequested();
++                            File.Move(temporary, wavPath, true);
++                        } finally { if (File.Exists(temporary)) { File.Delete(temporary); } }
++                    }
++                    progress.Complete(phrase.phones.Length, progressInfo);
++                    using (var waveStream = new WaveFileReader(wavPath)) {
++                        result.samples = Wave.GetSamples(waveStream.ToSampleProvider().ToMono(1, 0));
++                    }
++                    Renderers.ApplyDynamics(phrase, result);
++                    return result;
++                }
++            });
++        }
++
++        float[]? Synthesize(RenderPhrase phrase, CancellationTokenSource cancellation) {
++            var singer = phrase.singer as CoeiroinkSinger;
++            if (singer == null || phrase.phones.Length == 0) {
++                return null;
++            }
++            singer.EnsureLoaded();
++            var style = singer.GetStyle(phrase.phones[0].suffix);
++            if (style == null) {
++                throw new MessageCustomizableException("The COEIROINK voicebank has no styles.", "metas.json has no styles.", new InvalidDataException());
++            }
++            CoeiroinkModel model;
++            try {
++                model = CoeiroinkModel.Get(style);
++            } catch (FileNotFoundException e) {
++                throw new MessageCustomizableException("COEIROINK ONNX models were not found. Export them with the exporter tool.", e.Message, e);
++            }
++
++            var syllables = BuildSyllables(phrase);
++            if (syllables.Count == 0) {
++                return new float[(int)Math.Ceiling((HeadMs + phrase.durationMs + TailMs) * OutputSampleRate / 1000)];
++            }
++            var plan = CoeiroinkTimeline.BuildPlan(syllables);
++            if (!model.TryEncode(plan.Tokens, out var ids)) {
++                var missing = plan.Tokens.Where(t => !model.TokenIds.ContainsKey(t)).Distinct();
++                throw new MessageCustomizableException(
++                    $"The COEIROINK model does not know the tokens: {string.Join(" ", missing)}",
++                    $"Unsupported tokens: {string.Join(" ", missing)}",
++                    new InvalidDataException());
++            }
++            int seed = Seed(ids);
++            var predicted = model.PredictDurations(ids, seed, cancellation.Token);
++            if (cancellation.IsCancellationRequested) {
++                return null;
++            }
++            double startMs = phrase.positionMs - HeadMs;
++            var frames = CoeiroinkTimeline.Allocate(plan, syllables, predicted, startMs, model.Config.FrameMs);
++            var wave = model.Synthesize(ids, frames, seed, token: cancellation.Token);
++            if (cancellation.IsCancellationRequested) {
++                return null;
++            }
++            return Vocode(phrase, wave, startMs, model.Config.FrameMs, VoicedMask(plan, frames));
++        }
++
++        static List<CoeiroinkSyllable> BuildSyllables(RenderPhrase phrase) {
++            var syllables = new List<CoeiroinkSyllable>();
++            var phones = phrase.phones;
++            string? pendingConsonant = null;
++            double pendingConsonantMs = 0;
++            bool pendingPause = false;
++            for (int p = 0; p < phones.Length; p++) {
++                var phone = phones[p];
++                if (CoeiroinkKana.IsRest(phone.phoneme)) {
++                    pendingPause = syllables.Count > 0;
++                    pendingConsonant = null;
++                    continue;
++                }
++                if (CoeiroinkKana.IsConsonantToken(phone.phoneme)) {
++                    pendingConsonant = phone.phoneme.Trim();
++                    pendingConsonantMs = phone.endMs - phone.positionMs;
++                    continue;
++                }
++                if (!CoeiroinkKana.TryParse(phone.phoneme, out var moras)) {
++                    Log.Warning($"Skipped an unrecognized COEIROINK phoneme \"{phone.phoneme}\"");
++                    continue;
++                }
++                if (moras.Length == 1 && moras[0].Consonant != null && !moras[0].IsGeminate
++                    && p + 1 < phones.Length && phones[p + 1].noteIndex == phone.noteIndex
++                    && CoeiroinkKana.TryParse(phones[p + 1].phoneme, out var vowelMoras)
++                    && vowelMoras.Length == 1 && vowelMoras[0].Consonant == null && vowelMoras[0].Vowel == moras[0].Vowel) {
++                    var vowel = phones[p + 1];
++                    syllables.Add(new CoeiroinkSyllable {
++                        PauseBefore = pendingPause,
++                        ConsonantMs = vowel.positionMs - phone.positionMs,
++                        Mora = moras[0],
++                        StartMs = vowel.positionMs,
++                        EndMs = vowel.endMs,
++                        Tone = vowel.tone,
++                    });
++                    p++;
++                    pendingConsonant = null;
++                    pendingPause = false;
++                    continue;
++                }
++                double step = (phone.endMs - phone.positionMs) / moras.Length;
++                for (int i = 0; i < moras.Length; i++) {
++                    var mora = moras[i];
++                    double? consonantMs = null;
++                    if (i == 0 && pendingConsonant != null && mora.Consonant == null && !mora.IsGeminate) {
++                        mora = new CoeiroinkMora(pendingConsonant, mora.Vowel);
++                        consonantMs = pendingConsonantMs;
++                    }
++                    syllables.Add(new CoeiroinkSyllable {
++                        PauseBefore = pendingPause && i == 0,
++                        ConsonantMs = consonantMs,
++                        Mora = mora,
++                        StartMs = phone.positionMs + step * i,
++                        EndMs = phone.positionMs + step * (i + 1),
++                        Tone = phone.tone,
++                    });
++                }
++                pendingConsonant = null;
++                pendingPause = false;
++            }
++            return syllables;
++        }
++
++        static int Seed(long[] ids) {
++            var bytes = new byte[ids.Length * sizeof(long)];
++            Buffer.BlockCopy(ids, 0, bytes, 0, bytes.Length);
++            return (int)(XXH64.DigestOf(bytes) & 0x7fffffff);
++        }
++
++        static readonly HashSet<string> voicedConsonants = new HashSet<string> {
++            "m", "n", "ny", "my", "r", "ry", "y", "w", "g", "gy", "z", "j", "d", "dy", "b", "by", "v",
++        };
++
++        static bool[] VoicedMask(CoeiroinkTokenPlan plan, int[] frames) {
++            var mask = new bool[frames.Sum()];
++            int cursor = 0;
++            for (int i = 0; i < frames.Length; i++) {
++                bool voiced = plan.Roles[i] switch {
++                    CoeiroinkTokenRole.Vowel => plan.Tokens[i] != CoeiroinkKana.Geminate,
++                    CoeiroinkTokenRole.Consonant => voicedConsonants.Contains(plan.Tokens[i]),
++                    _ => false,
++                };
++                Array.Fill(mask, voiced, cursor, frames[i]);
++                cursor += frames[i];
++            }
++            return mask;
++        }
++
++        float[] Vocode(RenderPhrase phrase, float[] wave, double startMs, double frameMs, bool[] voiced) {
++            var vocoder = HifiVocoder.Instance;
++            var config = vocoder.Config;
++            if (config.sample_rate != OutputSampleRate || Math.Abs(config.hop_size - frameMs * OutputSampleRate / 1000) > 0.5) {
++                throw new MessageCustomizableException(
++                    "The vocoder must be 44.1 kHz with hop size 512.",
++                    $"Vocoder {config.name} is {config.sample_rate} Hz with hop {config.hop_size}.",
++                    new InvalidDataException());
++            }
++            int frames = HifiMelSpectrogram.FrameCount(wave.Length, config.hop_size);
++            var gender = SampleCurve(phrase, phrase.gender, 0, startMs + frameMs / 2, frameMs, frames, x => -0.12 * Math.Clamp(x, -100, 100));
++            var analyzer = new HifiMelSpectrogram(config.sample_rate, config.fft_size, config.win_size, config.hop_size, config.mel_fmin, config.mel_fmax, config.num_mel_bins);
++            var mel = analyzer.Compute(wave, gender);
++            HifiMelSpectrogram.LogCompress(mel);
++            var f0 = SampleCurve(phrase, phrase.pitches, 0, startMs + frameMs / 2, frameMs, frames, x => MusicMath.ToneToFreq(x * 0.01));
++            for (int i = 0; i < frames; i++) {
++                if (i >= voiced.Length || !voiced[i]) {
++                    f0[i] = 0;
++                }
++            }
++            var synthesized = vocoder.Synthesize(mel, f0);
++            var result = new float[wave.Length];
++            Array.Copy(synthesized, result, Math.Min(synthesized.Length, result.Length));
++            float peak = result.Length == 0 ? 0 : result.Max(Math.Abs);
++            if (peak > 0.99f) {
++                float scale = 0.99f / peak;
++                for (int i = 0; i < result.Length; i++) {
++                    result[i] *= scale;
++                }
++            }
++            return result;
++        }
++
++        static double[] SampleCurve(RenderPhrase phrase, float[] curve, double defaultValue, double startMs, double frameMs, int length, Func<double, double> convert) {
++            var result = new double[length];
++            if (curve == null || curve.Length == 0) {
++                Array.Fill(result, defaultValue);
++                return result;
++            }
++            int origin = phrase.position - phrase.leading;
++            for (int i = 0; i < length; i++) {
++                int ticks = phrase.timeAxis.MsPosToTickPos(startMs + i * frameMs) - origin;
++                int index = Math.Clamp(ticks / CurveInterval, 0, curve.Length - 1);
++                result[i] = convert(curve[index]);
++            }
++            return result;
++        }
++
++        public UExpressionDescriptor[] GetSuggestedExpressions(USinger singer, URenderSettings renderSettings) {
++            return Array.Empty<UExpressionDescriptor>();
++        }
++
++        public RenderPitchResult LoadRenderedPitch(RenderPhrase phrase) {
++            return null;
++        }
++
++        public override string ToString() => Renderers.COEIROINK;
++    }
++}
+diff --git a/OpenUtau.Core/Coeiroink/CoeiroinkSinger.cs b/OpenUtau.Core/Coeiroink/CoeiroinkSinger.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau.Core/Coeiroink/CoeiroinkSinger.cs
+@@ -0,0 +1,183 @@
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Linq;
++using System.Text;
++using OpenUtau.Classic;
++using OpenUtau.Core.Ustx;
++using Serilog;
++
++namespace OpenUtau.Core.Coeiroink {
++    public class CoeiroinkSinger : USinger {
++        public override string Id => voicebank.Id;
++        public override string Name => voicebank.Name;
++        public override Dictionary<string, string> LocalizedNames => voicebank.LocalizedNames;
++        public override IList<string> SearchTerms => voicebank.SearchTerms;
++        public override USingerType SingerType => voicebank.SingerType;
++        public override string BasePath => voicebank.BasePath;
++        public override string Author => voicebank.Author;
++        public override string Voice => voicebank.Voice;
++        public override string Location => Path.GetDirectoryName(voicebank.File);
++        public override string Web => voicebank.Web;
++        public override string Version => string.IsNullOrEmpty(voicebank.Version) ? config?.Version ?? string.Empty : voicebank.Version;
++        public override string OtherInfo => voicebank.OtherInfo;
++        public override IList<string> Errors => errors;
++        public override string Avatar => AvatarPath();
++        public override byte[] AvatarData => avatarData;
++        public override string Portrait => PortraitPath();
++        public override float PortraitOpacity => voicebank.PortraitOpacity;
++        public override int PortraitHeight => voicebank.PortraitHeight;
++        public override string Sample => voicebank.Sample == null ? SampleFromFolder() : Path.Combine(Location, voicebank.Sample);
++        public override string DefaultPhonemizer => voicebank.DefaultPhonemizer;
++        public override Encoding TextFileEncoding => voicebank.TextFileEncoding;
++        public override IList<USubbank> Subbanks => subbanks;
++        public override IList<UOto> Otos => otos;
++
++        public CoeiroinkConfig? Config => config;
++
++        Voicebank voicebank;
++        CoeiroinkConfig? config;
++        List<string> errors = new List<string>();
++        List<USubbank> subbanks = new List<USubbank>();
++        List<UOto> otos = new List<UOto>();
++        byte[]? avatarData;
++
++        public CoeiroinkSinger(Voicebank voicebank) {
++            this.voicebank = voicebank;
++            found = true;
++        }
++
++        public override void EnsureLoaded() {
++            if (Loaded) {
++                return;
++            }
++            Reload();
++        }
++
++        public override void Reload() {
++            if (!Found) {
++                return;
++            }
++            errors.Clear();
++            try {
++                voicebank.Reload();
++                Load();
++                loaded = true;
++            } catch (Exception e) {
++                errors.Add($"Failed to load {voicebank.File}: {e.Message}");
++                Log.Error(e, $"Failed to load {voicebank.File}");
++            }
++        }
++
++        void Load() {
++            config = CoeiroinkConfig.Load(Location);
++            subbanks.Clear();
++            otos.Clear();
++            subbanks.Add(new USubbank(new Subbank() {
++                Prefix = string.Empty,
++                Suffix = string.Empty,
++                ToneRanges = new[] { "C1-B7" },
++                Color = string.Empty,
++            }));
++            foreach (var style in config.Styles) {
++                subbanks.Add(new USubbank(new Subbank() {
++                    Prefix = string.Empty,
++                    Suffix = style.Name,
++                    ToneRanges = new[] { "C1-B7" },
++                    Color = style.Name,
++                }));
++                if (!style.IsExported) {
++                    errors.Add($"ONNX models of the style \"{style.Name}\" are missing. Export them with {CoeiroinkConfig.ExporterUrl}");
++                }
++            }
++            if (config.Styles.Count == 0) {
++                errors.Add("metas.json has no styles.");
++            }
++            var seen = new HashSet<string>();
++            foreach (var kana in CoeiroinkKana.AllKana) {
++                if (seen.Add(kana)) {
++                    otos.Add(UOto.OfDummy(kana));
++                }
++            }
++            LoadAvatar();
++        }
++
++        public CoeiroinkStyle? GetStyle(string? suffix) {
++            if (config == null || config.Styles.Count == 0) {
++                return null;
++            }
++            if (!string.IsNullOrEmpty(suffix)) {
++                var match = config.Styles.FirstOrDefault(s => s.Name == suffix);
++                if (match != null) {
++                    return match;
++                }
++            }
++            return config.Styles[0];
++        }
++
++        string AvatarPath() {
++            if (voicebank.Image != null) {
++                return Path.Combine(Location, voicebank.Image);
++            }
++            return config?.Styles.FirstOrDefault(s => File.Exists(s.Icon))?.Icon;
++        }
++
++        string PortraitPath() {
++            if (voicebank.Portrait != null) {
++                return Path.Combine(Location, voicebank.Portrait);
++            }
++            var path = Path.Combine(Location, "portrait.png");
++            return File.Exists(path) ? path : null;
++        }
++
++        string SampleFromFolder() {
++            var dir = Path.Combine(Location, "voice_samples");
++            if (!Directory.Exists(dir)) {
++                return null;
++            }
++            return Directory.EnumerateFiles(dir, "*.wav").OrderBy(f => f, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
++        }
++
++        void LoadAvatar() {
++            var path = Avatar;
++            if (path != null && File.Exists(path)) {
++                try {
++                    avatarData = File.ReadAllBytes(path);
++                } catch (Exception e) {
++                    avatarData = null;
++                    Log.Error(e, "Failed to load avatar data.");
++                }
++            } else {
++                avatarData = null;
++            }
++        }
++
++        public override bool TryGetOto(string phoneme, out UOto oto) {
++            if (phoneme != null && (CoeiroinkKana.TryParse(phoneme, out _) || CoeiroinkKana.IsConsonantToken(phoneme) || CoeiroinkKana.IsRest(phoneme))) {
++                oto = UOto.OfDummy(phoneme);
++                return true;
++            }
++            oto = null;
++            return false;
++        }
++
++        public override Dictionary<string, UOto> GetSuggestions(string text, bool isAlias) {
++            bool all = string.IsNullOrEmpty(text);
++            return otos
++                .Where(o => all || o.Alias.Contains(text))
++                .ToDictionary(o => o.Alias, o => o);
++        }
++
++        public override byte[] LoadPortrait() {
++            return string.IsNullOrEmpty(Portrait) || !File.Exists(Portrait)
++                ? null
++                : File.ReadAllBytes(Portrait);
++        }
++
++        public override byte[] LoadSample() {
++            return string.IsNullOrEmpty(Sample) || !File.Exists(Sample)
++                ? null
++                : File.ReadAllBytes(Sample);
++        }
++    }
++}
+diff --git a/OpenUtau.Core/Coeiroink/CoeiroinkTimeline.cs b/OpenUtau.Core/Coeiroink/CoeiroinkTimeline.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau.Core/Coeiroink/CoeiroinkTimeline.cs
+@@ -0,0 +1,213 @@
++using System;
++using System.Collections.Generic;
++using System.Linq;
++
++namespace OpenUtau.Core.Coeiroink {
++    public class CoeiroinkSyllable {
++        public CoeiroinkMora Mora;
++        public double StartMs;
++        public double EndMs;
++        public int Tone;
++        public double? ConsonantMs;
++        public bool PauseBefore;
++    }
++
++    public enum CoeiroinkTokenRole {
++        Start,
++        Boundary,
++        Pause,
++        Consonant,
++        Vowel,
++        Marker,
++        End,
++    }
++
++    public class CoeiroinkTokenPlan {
++        public readonly List<string> Tokens = new List<string>();
++        public readonly List<CoeiroinkTokenRole> Roles = new List<CoeiroinkTokenRole>();
++        public readonly List<int> MoraIndexes = new List<int>();
++
++        public void Add(string token, CoeiroinkTokenRole role, int mora) {
++            Tokens.Add(token);
++            Roles.Add(role);
++            MoraIndexes.Add(mora);
++        }
++    }
++
++    public static class CoeiroinkTimeline {
++        public const string StartToken = "^";
++        public const string EndToken = "$";
++        public const string PauseToken = "_";
++        public const string BoundaryToken = "#";
++        public const string FallToken = "]";
++
++        public const double PauseThresholdMs = 50;
++        public const int MaxPhraseMoras = 8;
++        public const int MaxConsonantFrames = 14;
++        public const int MaxMarkerFrames = 3;
++        public const int TailFrames = 9;
++
++        public static CoeiroinkTokenPlan BuildPlan(IReadOnlyList<CoeiroinkSyllable> syllables) {
++            var plan = new CoeiroinkTokenPlan();
++            plan.Add(StartToken, CoeiroinkTokenRole.Start, -1);
++            var markers = BuildMarkers(syllables);
++            for (int k = 0; k < syllables.Count; k++) {
++                var mora = syllables[k].Mora;
++                if (k > 0) {
++                    if (IsPause(syllables, k)) {
++                        plan.Add(PauseToken, CoeiroinkTokenRole.Pause, k);
++                    } else if (markers.PhraseStarts.Contains(k)) {
++                        plan.Add(BoundaryToken, CoeiroinkTokenRole.Boundary, k);
++                    }
++                }
++                if (mora.Consonant != null) {
++                    plan.Add(mora.Consonant, CoeiroinkTokenRole.Consonant, k);
++                }
++                plan.Add(mora.Vowel, CoeiroinkTokenRole.Vowel, k);
++                foreach (var marker in markers.After[k]) {
++                    plan.Add(marker, CoeiroinkTokenRole.Marker, k);
++                }
++            }
++            plan.Add(EndToken, CoeiroinkTokenRole.End, syllables.Count);
++            return plan;
++        }
++
++        static bool IsPause(IReadOnlyList<CoeiroinkSyllable> syllables, int k) {
++            return syllables[k].PauseBefore || syllables[k].StartMs - syllables[k - 1].EndMs >= PauseThresholdMs;
++        }
++
++        class Markers {
++            public readonly HashSet<int> PhraseStarts = new HashSet<int>();
++            public List<string>[] After = Array.Empty<List<string>>();
++        }
++
++        static Markers BuildMarkers(IReadOnlyList<CoeiroinkSyllable> syllables) {
++            var markers = new Markers { After = Enumerable.Range(0, syllables.Count).Select(_ => new List<string>()).ToArray() };
++            int start = 0;
++            for (int k = 1; k <= syllables.Count; k++) {
++                bool end = k == syllables.Count;
++                bool pause = !end && IsPause(syllables, k);
++                bool forced = !end && k - start >= MaxPhraseMoras;
++                if (end || pause || forced) {
++                    AddAccent(syllables, start, k, markers);
++                    if (!end) {
++                        markers.PhraseStarts.Add(k);
++                    }
++                    start = k;
++                }
++            }
++            return markers;
++        }
++
++        static void AddAccent(IReadOnlyList<CoeiroinkSyllable> syllables, int start, int end, Markers markers) {
++            int count = end - start;
++            if (count < 2) {
++                return;
++            }
++            var tones = Enumerable.Range(start, count).Select(i => syllables[i].Tone).ToArray();
++            int max = tones.Max();
++            int min = tones.Min();
++            if (max == min) {
++                return;
++            }
++            int high = Array.IndexOf(tones, max);
++            int nucleus = high;
++            while (nucleus + 1 < count && tones[nucleus + 1] >= max - 1) {
++                nucleus++;
++            }
++            if (nucleus < count - 1) {
++                markers.After[start + nucleus].Add(FallToken);
++            }
++        }
++
++        public static int[] Allocate(
++            CoeiroinkTokenPlan plan,
++            IReadOnlyList<CoeiroinkSyllable> syllables,
++            IReadOnlyList<float> predicted,
++            double startMs,
++            double frameMs) {
++            int count = syllables.Count;
++            var anchors = new int[count];
++            var ends = new int[count];
++            for (int k = 0; k < count; k++) {
++                int minAnchor = k == 0 ? 2 : anchors[k - 1] + 3;
++                anchors[k] = Math.Max(minAnchor, (int)Math.Round((syllables[k].StartMs - startMs) / frameMs));
++                ends[k] = Math.Max(anchors[k] + 2, (int)Math.Round((syllables[k].EndMs - startMs) / frameMs));
++            }
++
++            var consonant = new int[count];
++            var boundary = new int[count];
++            var markerFrames = new int[count];
++            var pause = new bool[count];
++            for (int i = 0; i < plan.Tokens.Count; i++) {
++                int k = plan.MoraIndexes[i];
++                int frames = Math.Max(1, (int)Math.Ceiling(predicted[i]));
++                switch (plan.Roles[i]) {
++                    case CoeiroinkTokenRole.Consonant: {
++                        int available = k == 0 ? anchors[0] - 1 : (anchors[k] - anchors[k - 1]) / 2;
++                        if (syllables[k].ConsonantMs.HasValue) {
++                            frames = Math.Max(1, (int)Math.Round(syllables[k].ConsonantMs.Value / frameMs));
++                        }
++                        consonant[k] = Math.Clamp(frames, 1, Math.Max(1, Math.Min(MaxConsonantFrames, available)));
++                        break;
++                    }
++                    case CoeiroinkTokenRole.Boundary:
++                        boundary[k] = Math.Min(frames, MaxMarkerFrames);
++                        break;
++                    case CoeiroinkTokenRole.Pause:
++                        pause[k] = true;
++                        break;
++                    case CoeiroinkTokenRole.Marker:
++                        markerFrames[k] += Math.Min(frames, MaxMarkerFrames);
++                        break;
++                }
++            }
++
++            int PreStart(int k) => anchors[k] - consonant[k] - boundary[k];
++
++            var result = new int[plan.Tokens.Count];
++            for (int i = 0; i < plan.Tokens.Count; i++) {
++                int k = plan.MoraIndexes[i];
++                switch (plan.Roles[i]) {
++                    case CoeiroinkTokenRole.Start:
++                        result[i] = Math.Max(1, PreStart(0));
++                        break;
++                    case CoeiroinkTokenRole.Boundary:
++                        result[i] = boundary[k];
++                        break;
++                    case CoeiroinkTokenRole.Pause: {
++                        int vowelEnd = VowelEnd(k - 1);
++                        result[i] = Math.Max(1, PreStart(k) - vowelEnd);
++                        break;
++                    }
++                    case CoeiroinkTokenRole.Consonant:
++                        result[i] = consonant[k];
++                        break;
++                    case CoeiroinkTokenRole.Vowel: {
++                        int span = VowelEnd(k) - anchors[k] - markerFrames[k];
++                        result[i] = Math.Max(1, span);
++                        break;
++                    }
++                    case CoeiroinkTokenRole.Marker:
++                        result[i] = Math.Max(1, Math.Min(MaxMarkerFrames, (int)Math.Ceiling(predicted[i])));
++                        break;
++                    case CoeiroinkTokenRole.End:
++                        result[i] = TailFrames;
++                        break;
++                }
++            }
++            return result;
++
++            int VowelEnd(int k) {
++                if (k == count - 1) {
++                    return ends[k];
++                }
++                int limit = PreStart(k + 1);
++                if (pause[k + 1]) {
++                    return Math.Min(ends[k], limit - 1);
++                }
++                return limit;
++            }
++        }
++    }
++}
+diff --git a/OpenUtau.Core/Pipeline/PhraseSource.cs b/OpenUtau.Core/Pipeline/PhraseSource.cs
+--- a/OpenUtau.Core/Pipeline/PhraseSource.cs
++++ b/OpenUtau.Core/Pipeline/PhraseSource.cs
+@@ -501,6 +501,12 @@
+             var groups = new List<(int, int)>();
+             int start = 0;
+             for (int i = 1; i < phonemes.Count; ++i) {
++                if (track.Singer?.SingerType == USingerType.Coeiroink &&
++                    phonemes[i - 1].GetVoiceColor(project, track) != phonemes[i].GetVoiceColor(project, track)) {
++                    groups.Add((start, i));
++                    start = i;
++                    continue;
++                }
+                 if (phonemes[i - 1].End == phonemes[i].position) {
+                     continue;   // No gap: same phrase
+                 }
+diff --git a/OpenUtau.Core/Render/Renderers.cs b/OpenUtau.Core/Render/Renderers.cs
+--- a/OpenUtau.Core/Render/Renderers.cs
++++ b/OpenUtau.Core/Render/Renderers.cs
+@@ -16,12 +16,14 @@
+         public const string VOGEN = "VOGEN";
+         public const string DIFFSINGER = "DIFFSINGER";
+         public const string VOICEVOX = "VOICEVOX";
++        public const string COEIROINK = "COEIROINK";
+ 
+         static readonly string[] classicRenderers = new[] { WORLDLINE_R, WORLDLINE_R11, CLASSIC };
+         static readonly string[] enunuRenderers = new[] { ENUNU };
+         static readonly string[] vogenRenderers = new[] { VOGEN };
+         static readonly string[] diffSingerRenderers = new[] { DIFFSINGER };
+         static readonly string[] voicevoxRenderers = new[] { VOICEVOX };
++        static readonly string[] coeiroinkRenderers = new[] { COEIROINK };
+         static readonly string[] noRenderers = new string[0];
+ 
+         public static string[] GetSupportedRenderers(USingerType singerType) {
+@@ -36,6 +38,8 @@
+                     return diffSingerRenderers;
+                 case USingerType.Voicevox:
+                     return voicevoxRenderers;
++                case USingerType.Coeiroink:
++                    return coeiroinkRenderers;
+                 default:
+                     return noRenderers;
+             }
+@@ -77,6 +81,8 @@
+                 return new DiffSinger.DiffSingerRenderer();
+             } else if (renderer == VOICEVOX) {
+                 return new Voicevox.VoicevoxRenderer();
++            } else if (renderer == COEIROINK) {
++                return new Coeiroink.CoeiroinkRenderer();
+             }
+             return null;
+         }
+diff --git a/OpenUtau.Core/Ustx/USinger.cs b/OpenUtau.Core/Ustx/USinger.cs
+--- a/OpenUtau.Core/Ustx/USinger.cs
++++ b/OpenUtau.Core/Ustx/USinger.cs
+@@ -193,7 +193,7 @@
+         }
+     }
+ 
+-    [Flags] public enum USingerType { Classic = 0x1, Enunu = 0x2, Vogen = 0x4, DiffSinger = 0x5, Voicevox = 0x6 }
++    [Flags] public enum USingerType { Classic = 0x1, Enunu = 0x2, Vogen = 0x4, DiffSinger = 0x5, Voicevox = 0x6, Coeiroink = 0x8 }
+ 
+     public static class SingerTypeUtils {
+         public static Dictionary<USingerType?, string> SingerTypeNames = new Dictionary<USingerType?, string>(){
+@@ -201,6 +201,7 @@
+             {USingerType.Enunu, "enunu"},
+             {USingerType.DiffSinger, "diffsinger"},
+             {USingerType.Voicevox, "voicevox"},
++            {USingerType.Coeiroink, "coeiroink"},
+         };
+ 
+         public static Dictionary<string, USingerType> SingerTypeFromName = new Dictionary<string, USingerType>(){
+@@ -208,6 +209,7 @@
+             {"enunu", USingerType.Enunu},
+             {"diffsinger", USingerType.DiffSinger},
+             {"voicevox", USingerType.Voicevox},
++            {"coeiroink", USingerType.Coeiroink},
+         };
+ 
+     }
+diff --git a/OpenUtau.Test/Core/Coeiroink/CoeiroinkKanaTest.cs b/OpenUtau.Test/Core/Coeiroink/CoeiroinkKanaTest.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau.Test/Core/Coeiroink/CoeiroinkKanaTest.cs
+@@ -0,0 +1,62 @@
++using System.Linq;
++using Xunit;
++
++namespace OpenUtau.Core.Coeiroink {
++    public class CoeiroinkKanaTest {
++        static string Parse(string lyric) {
++            Assert.True(CoeiroinkKana.TryParse(lyric, out var moras), lyric);
++            return string.Join(" | ", moras.Select(m => m.ToString()));
++        }
++
++        [Theory]
++        [InlineData("か", "k a")]
++        [InlineData("カ", "k a")]
++        [InlineData("し", "sh i")]
++        [InlineData("ちゃ", "ch a")]
++        [InlineData("きょ", "ky o")]
++        [InlineData("ふぁ", "f a")]
++        [InlineData("てぃ", "t i")]
++        [InlineData("ゔぁ", "v a")]
++        [InlineData("を", "o")]
++        [InlineData("ん", "N")]
++        [InlineData("っ", "cl")]
++        [InlineData("あ", "a")]
++        public void ParsesSingleKana(string lyric, string expected) {
++            Assert.Equal(expected, Parse(lyric));
++        }
++
++        [Fact]
++        public void ParsesWordsAndLongVowels() {
++            Assert.Equal("k o | N | n i | ch i | w a", Parse("こんにちわ"));
++            Assert.Equal("k a | a", Parse("かー"));
++        }
++
++        [Theory]
++        [InlineData("ka", "k a")]
++        [InlineData("sha", "sh a")]
++        [InlineData("n", "N")]
++        [InlineData("k a", "k a")]
++        [InlineData("ky o", "ky o")]
++        [InlineData("N", "N")]
++        public void ParsesRomajiAndTokens(string lyric, string expected) {
++            Assert.Equal(expected, Parse(lyric));
++        }
++
++        [Theory]
++        [InlineData("hello")]
++        [InlineData("k")]
++        [InlineData("")]
++        public void RejectsUnknownText(string lyric) {
++            Assert.False(CoeiroinkKana.TryParse(lyric, out _));
++        }
++
++        [Fact]
++        public void RecognizesRestsAndExtensions() {
++            Assert.True(CoeiroinkKana.IsRest("R"));
++            Assert.True(CoeiroinkKana.IsRest("sp"));
++            Assert.True(CoeiroinkKana.IsExtension("+"));
++            Assert.True(CoeiroinkKana.IsExtension("ー"));
++            Assert.False(CoeiroinkKana.IsRest("か"));
++        }
++    }
++}
+diff --git a/OpenUtau.Test/Core/Coeiroink/CoeiroinkPhonemizerTest.cs b/OpenUtau.Test/Core/Coeiroink/CoeiroinkPhonemizerTest.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau.Test/Core/Coeiroink/CoeiroinkPhonemizerTest.cs
+@@ -0,0 +1,55 @@
++using System.Linq;
++using OpenUtau.Api;
++using OpenUtau.Core.Ustx;
++using Xunit;
++
++namespace OpenUtau.Core.Coeiroink {
++    public class CoeiroinkPhonemizerTest {
++        static Phonemizer.Result Process(Phonemizer phonemizer, params (string lyric, int position, int duration)[] notes) {
++            var project = new UProject();
++            project.timeAxis.BuildSegments(project);
++            var group = notes.Select(n => new Phonemizer.Note { lyric = n.lyric, position = n.position, duration = n.duration, tone = 60 }).ToArray();
++            phonemizer.SetUp(new[] { group }, project, new UTrack(project));
++            phonemizer.SetTiming(project.timeAxis);
++            return phonemizer.Process(group, null, null, null, null, new Phonemizer.Note[0]);
++        }
++
++        static string[] Names(Phonemizer.Result result) => result.phonemes.Select(p => p.phoneme).ToArray();
++
++        [Fact]
++        public void PlainPhonemizerKeepsOnePhonemePerMora() {
++            Assert.Equal(new[] { "ち" }, Names(Process(new CoeiroinkPhonemizer(), ("ち", 480, 480))));
++            Assert.Equal(new[] { "k a", "k u" }, Names(Process(new CoeiroinkPhonemizer(), ("かく", 0, 960))));
++        }
++
++        [Fact]
++        public void PlusPhonemizerSplitsConsonantFromVowelInsideTheNote() {
++            var result = Process(new CoeiroinkPlusPhonemizer(), ("ち", 480, 480));
++            Assert.Equal(new[] { "chi", "i" }, Names(result));
++            Assert.Equal(0, result.phonemes[0].position);
++            Assert.InRange(result.phonemes[1].position, 1, 240);
++        }
++
++        [Fact]
++        public void PlusPhonemizerKeepsPlainVowelsAndNasalsWhole() {
++            Assert.Equal(new[] { "あ" }, Names(Process(new CoeiroinkPlusPhonemizer(), ("あ", 0, 480))));
++            Assert.Equal(new[] { "ん" }, Names(Process(new CoeiroinkPlusPhonemizer(), ("ん", 0, 480))));
++        }
++
++        [Fact]
++        public void PlusPhonemizerSplitsEveryMoraOfAWord() {
++            var result = Process(new CoeiroinkPlusPhonemizer(), ("きゃく", 0, 960));
++            Assert.Equal(new[] { "kya", "a", "ku", "u" }, Names(result));
++        }
++
++        [Fact]
++        public void BothTurnRestsIntoPauAndSkipExtensions() {
++            foreach (Phonemizer phonemizer in new Phonemizer[] { new CoeiroinkPhonemizer(), new CoeiroinkPlusPhonemizer() }) {
++                foreach (var lyric in new[] { "R", "SP", "pau" }) {
++                    Assert.Equal(new[] { "pau" }, Names(Process(phonemizer, (lyric, 0, 480))));
++                }
++                Assert.Empty(Process(phonemizer, ("+", 0, 480)).phonemes);
++            }
++        }
++    }
++}
+diff --git a/OpenUtau.Test/Core/Coeiroink/CoeiroinkRendererTest.cs b/OpenUtau.Test/Core/Coeiroink/CoeiroinkRendererTest.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau.Test/Core/Coeiroink/CoeiroinkRendererTest.cs
+@@ -0,0 +1,156 @@
++using System;
++using System.IO;
++using System.Linq;
++using System.Threading;
++using OpenUtau.Classic;
++using OpenUtau.Core.Render;
++using OpenUtau.Core.Ustx;
++using OpenUtau.Core.Util;
++using Xunit;
++
++namespace OpenUtau.Core.Coeiroink {
++    [Collection(RenderSingletonCollection.Name)]
++    public class CoeiroinkRendererTest {
++        const string BankVariable = "COEIROINK_TEST_BANK";
++        const string OutputVariable = "COEIROINK_TEST_OUT";
++
++        static UProject NewProject(USinger singer) {
++            var project = Format.Ustx.Create();
++            project.RegisterExpression(new UExpressionDescriptor("engine", "eng", 0, 100, 0) { options = new[] { "" } });
++            project.RegisterExpression(new UExpressionDescriptor("volume", "vol", 0, 100, 100));
++            project.RegisterExpression(new UExpressionDescriptor("velocity", "vel", 0, 100, 100));
++            project.RegisterExpression(new UExpressionDescriptor("modulation", "mod", 0, 100, 0));
++            project.RegisterExpression(new UExpressionDescriptor("direct", "dir", 0, 100, 0));
++            project.RegisterExpression(new UExpressionDescriptor("shift", "shft", 0, 100, 0));
++            project.RegisterExpression(new UExpressionDescriptor("attack", "atk", 0, 100, 100));
++            project.RegisterExpression(new UExpressionDescriptor("decay", "dec", 0, 100, 100));
++            project.tracks.Clear();
++            var track = new UTrack("Lead") { TrackNo = 0 };
++            track.Singer = singer;
++            track.Phonemizer = OpenUtau.Api.PhonemizerFactory.Get(typeof(CoeiroinkPhonemizer)).Create();
++            track.RendererSettings.renderer = Renderers.COEIROINK;
++            track.RendererSettings.Validate(track);
++            project.tracks.Add(track);
++            return project;
++        }
++
++        [Fact]
++        public void RendersSungPhraseAtNotePitch() {
++            var bank = Environment.GetEnvironmentVariable(BankVariable);
++            if (string.IsNullOrEmpty(bank) || !Directory.Exists(bank)) {
++                throw new InvalidOperationException("Set COEIROINK_TEST_BANK to an exported bank for this integration test.");
++            }
++            ThreadGuard.SetUiThread(Thread.CurrentThread);
++            System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
++            var loader = new VoicebankLoader(Path.GetDirectoryName(bank)!);
++            var voicebank = loader.SearchAll().Single(v => Path.GetDirectoryName(v.File) == bank);
++            Assert.Equal(USingerType.Coeiroink, voicebank.SingerType);
++            var singer = new CoeiroinkSinger(voicebank);
++            singer.EnsureLoaded();
++            Assert.Empty(singer.Errors);
++
++            var project = NewProject(singer);
++            var track = project.tracks[0];
++            var part = new UVoicePart { name = "A", trackNo = 0, position = 0, duration = 2400 };
++            project.parts.Add(part);
++            project.timeAxis.BuildSegments(project);
++            var lyrics = new[] { "こ", "ん", "に", "ち", "は", "ね" };
++            var tones = new[] { 60, 62, 64, 62, 60, 62 };
++            for (int i = 0; i < lyrics.Length; i++) {
++                var note = UNote.Create();
++                note.position = i * 360;
++                note.duration = 360;
++                note.tone = tones[i];
++                note.lyric = lyrics[i];
++                note.PositionMs = project.timeAxis.TickPosToMsPos(note.position);
++                note.EndMs = project.timeAxis.TickPosToMsPos(note.End);
++                note.pitch.data = new() { new(-40, 0), new(40, 0) };
++                note.ExtendedDuration = 360;
++                part.notes.Add(note);
++                if (i > 0) {
++                    var previous = part.notes.ElementAt(i - 1);
++                    previous.Next = note;
++                    note.Prev = previous;
++                }
++                var phoneme = new UPhoneme { position = note.position, phoneme = lyrics[i], Parent = note };
++                part.phonemes.Add(phoneme);
++                phoneme.Validate(new ValidateOptions(), project, track, part, note);
++                Assert.False(phoneme.Error, phoneme.ErrorException?.ToString());
++            }
++            var phrases = RenderPhrase.FromPart(project, track, part);
++            Assert.Single(phrases);
++
++            var renderer = new CoeiroinkRenderer();
++            var result = renderer.Render(phrases[0], new Progress(1), 0, new CancellationTokenSource(), false).Result;
++            Assert.NotNull(result.samples);
++            Assert.True(result.samples.Length > 44100 * 0.8);
++            Assert.True(result.samples.Max(Math.Abs) > 0.05f);
++
++            var output = Environment.GetEnvironmentVariable(OutputVariable);
++            if (!string.IsNullOrEmpty(output)) {
++                Format.Wave.WriteMono16Wav(output, result.samples);
++            }
++
++            var f0 = Worldline.F0(result.samples, 44100, 5, 0);
++            double startMs = result.positionMs - result.leadingMs;
++            var measured = new System.Collections.Generic.List<string>();
++            for (int i = 0; i < lyrics.Length; i++) {
++                double centerMs = project.timeAxis.TickPosToMsPos(i * 360 + 220);
++                int frame = (int)((centerMs - startMs) / 5);
++                var window = f0.Skip(frame - 4).Take(9).Where(v => v > 0).ToArray();
++                Assert.NotEmpty(window);
++                double expected = MusicMath.ToneToFreq(tones[i]);
++                double cents = 1200 * Math.Log2(window.OrderBy(v => v).ElementAt(window.Length / 2) / expected);
++                measured.Add($"{lyrics[i]}:{cents:F0}");
++            }
++            Assert.True(measured.All(m => Math.Abs(double.Parse(m.Split(':')[1])) <= 100), string.Join(" ", measured));
++            Assert.All(result.samples, value => Assert.True(float.IsFinite(value)));
++            foreach (var note in part.notes) { note.noteGain = 50; }
++            var quieter = RenderPhrase.FromPart(project, track, part).Single();
++            var half = renderer.Render(quieter, new Progress(1), 0, new CancellationTokenSource(), false).Result;
++            Assert.Equal(result.samples.Length, half.samples.Length);
++            Assert.InRange(result.samples.Zip(half.samples, (a, b) => Math.Abs(a * 0.5f - b)).Max(), 0, 0.0001f);
++            var techniques = new[] { "scoop", "fall", "hammer", "pull", "overshoot", "rise" };
++            for (int i = 0; i < techniques.Length; i++) {
++                var note = part.notes.ElementAt(i);
++                note.pitch = VocalTechniques.Set(note.pitch, note.DurationMs, techniques[i], true);
++            }
++            string settings = Yaml.DefaultSerializer.Serialize(part);
++            var expressive = RenderPhrase.FromPart(project, track, part).Single();
++            Assert.NotEqual(quieter.pitches, expressive.pitches);
++            var expressionAudio = renderer.Render(expressive, new Progress(1), 0, new CancellationTokenSource(), false).Result;
++            Assert.Contains(expressionAudio.samples, v => Math.Abs(v) > 0.01);
++            Assert.Equal(settings, Yaml.DefaultSerializer.Serialize(part));
++            var canceled = new CancellationTokenSource();
++            canceled.Cancel();
++            var noAudio = renderer.Render(expressive, new Progress(1), 0, canceled, false).Result;
++            Assert.Null(noAudio.samples);
++            var projectFile = Environment.GetEnvironmentVariable("COEIROINK_TEST_PROJECT");
++            if (!string.IsNullOrEmpty(projectFile)) {
++                project.ustxVersion = new Version(0, 10);
++                project.BeforeSave();
++                File.WriteAllText(projectFile, Yaml.DefaultSerializer.Serialize(project));
++                project.AfterSave();
++                SingerManager.Inst.Singers[singer.Id] = singer;
++                try {
++                    var loaded = Format.Ustx.Load(projectFile);
++                    var restored = Assert.IsType<UVoicePart>(loaded.parts.Single());
++                    for (int i = 0; i < techniques.Length; i++) {
++                        Assert.Equal(50, restored.notes.ElementAt(i).noteGain);
++                        Assert.True(VocalTechniques.IsEnabled(restored.notes.ElementAt(i).pitch, techniques[i]));
++                    }
++                } finally { SingerManager.Inst.Singers.Remove(singer.Id); }
++            }
++            var color = new UExpressionDescriptor("voice color", Format.Ustx.CLR, 0, 1, 0) {
++                options = new[] { "", singer.Config!.Styles[0].Name },
++            };
++            project.RegisterExpression(color);
++            track.VoiceColorExp = color;
++            foreach (var phone in part.phonemes.Skip(2)) { phone.SetExpression(project, track, Format.Ustx.CLR, 1); }
++            var styled = RenderPhrase.FromPart(project, track, part);
++            Assert.Equal(2, styled.Count);
++            Assert.Equal("", styled[0].phones[0].suffix);
++            Assert.Equal(singer.Config.Styles[0].Name, styled[1].phones[0].suffix);
++        }
++    }
++}
+diff --git a/OpenUtau.Test/Core/Coeiroink/CoeiroinkTimelineTest.cs b/OpenUtau.Test/Core/Coeiroink/CoeiroinkTimelineTest.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau.Test/Core/Coeiroink/CoeiroinkTimelineTest.cs
+@@ -0,0 +1,97 @@
++using System.Collections.Generic;
++using System.Linq;
++using Xunit;
++
++namespace OpenUtau.Core.Coeiroink {
++    public class CoeiroinkTimelineTest {
++        const double FrameMs = 512 * 1000.0 / 44100;
++
++        static CoeiroinkSyllable Syllable(string text, double startMs, double endMs, int tone) {
++            CoeiroinkKana.TryParse(text, out var moras);
++            return new CoeiroinkSyllable { Mora = moras[0], StartMs = startMs, EndMs = endMs, Tone = tone };
++        }
++
++        static List<CoeiroinkSyllable> Melody(params (string text, int tone)[] notes) {
++            var list = new List<CoeiroinkSyllable>();
++            for (int i = 0; i < notes.Length; i++) {
++                list.Add(Syllable(notes[i].text, 400 + i * 500, 400 + (i + 1) * 500, notes[i].tone));
++            }
++            return list;
++        }
++
++        [Fact]
++        public void PlanWrapsMorasInStartAndEnd() {
++            var plan = CoeiroinkTimeline.BuildPlan(Melody(("か", 60), ("あ", 60)));
++            Assert.Equal("^ k a a $", string.Join(" ", plan.Tokens));
++        }
++
++        [Fact]
++        public void RisingMelodyPutsFallAfterPeak() {
++            var plan = CoeiroinkTimeline.BuildPlan(Melody(("か", 60), ("さ", 67), ("た", 67), ("な", 60)));
++            Assert.Equal("^ k a s a t a ] n a $", string.Join(" ", plan.Tokens));
++        }
++
++        [Fact]
++        public void HighFirstMoraPutsFallAfterIt() {
++            var plan = CoeiroinkTimeline.BuildPlan(Melody(("か", 67), ("さ", 60), ("た", 60)));
++            Assert.Equal("^ k a ] s a t a $", string.Join(" ", plan.Tokens));
++        }
++
++        [Fact]
++        public void LongGapInsertsPauseToken() {
++            var syllables = new List<CoeiroinkSyllable> {
++                Syllable("か", 400, 800, 60),
++                Syllable("さ", 1600, 2000, 60),
++            };
++            var plan = CoeiroinkTimeline.BuildPlan(syllables);
++            Assert.Equal("^ k a _ s a $", string.Join(" ", plan.Tokens));
++        }
++
++        [Fact]
++        public void ForcedPauseSilencesAShortGap() {
++            var first = Syllable("か", 400, 800, 60);
++            var second = Syllable("さ", 800, 1200, 60);
++            second.PauseBefore = true;
++            var plan = CoeiroinkTimeline.BuildPlan(new List<CoeiroinkSyllable> { first, second });
++            Assert.Equal("^ k a _ s a $", string.Join(" ", plan.Tokens));
++        }
++
++        [Fact]
++        public void ShortRestOverThresholdInsertsPause() {
++            var plan = CoeiroinkTimeline.BuildPlan(new List<CoeiroinkSyllable> {
++                Syllable("か", 400, 700, 60),
++                Syllable("さ", 800, 1200, 60),
++            });
++            Assert.Contains(CoeiroinkTimeline.PauseToken, plan.Tokens);
++        }
++
++        [Fact]
++        public void LongPhrasesAreSplitIntoAccentPhrases() {
++            var notes = Enumerable.Range(0, 10).Select(_ => ("あ", 60)).ToArray();
++            var plan = CoeiroinkTimeline.BuildPlan(Melody(notes));
++            Assert.Contains(CoeiroinkTimeline.BoundaryToken, plan.Tokens);
++        }
++
++        [Fact]
++        public void VowelOnsetsLandOnTheNoteStarts() {
++            var syllables = Melody(("か", 60), ("さ", 62), ("た", 64));
++            var plan = CoeiroinkTimeline.BuildPlan(syllables);
++            var predicted = plan.Tokens.Select(_ => 4f).ToArray();
++            double startMs = syllables[0].StartMs - 160;
++            var frames = CoeiroinkTimeline.Allocate(plan, syllables, predicted, startMs, FrameMs);
++            Assert.All(frames, f => Assert.True(f >= 1));
++
++            int vowelIndex = 0;
++            int cursor = 0;
++            for (int i = 0; i < plan.Tokens.Count; i++) {
++                if (plan.Roles[i] == CoeiroinkTokenRole.Vowel) {
++                    double onsetMs = startMs + cursor * FrameMs;
++                    Assert.InRange(onsetMs - syllables[vowelIndex].StartMs, -FrameMs, FrameMs);
++                    vowelIndex++;
++                }
++                cursor += frames[i];
++            }
++            Assert.Equal(3, vowelIndex);
++        }
++    }
++}
