@@ -26,3 +26,6 @@ for wheel in "$@"; do
     done
     "$found" || { echo "Missing arm64 Python 3.10 wheel: $wheel" >&2; exit 1; }
 done
+
+mkdir -p "$dest/licenses"
+cp "$repo/third_party/utauv/LICENSE.txt" "$dest/licenses/UtauV-LICENSE.txt"

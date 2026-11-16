@@ -8,6 +8,7 @@ ZIPを展開して「セットアップ.app」を開くと、OpenUtau AUとLogic
 
 ## 開発版の追加機能
 
+- **UtauV Auto Pitch**：UtauVのONNXモデルでAI自動調声。ピアノロールの「AP」または「一括編集 → 自動調声 → UtauV Auto Pitch」から使えます。ノート音量・歌唱テクニック・ビブラートを保持し、選択ノートのPITDだけを更新します。初回に作者の安定版モデル1.2（約4.8 MB）を取得し、Apple Silicon上で推論します。公開ZIPのone-click.8には未収録です。
 - **音声からピッチ転写**：同梱のpYIN／WORLDを使い、音声ファイルから選択ノートのカーブへ転写。位置合わせ・点数削減・Undoに対応し、追加モデルは不要です。[使い方と公式の既存機能との違い](docs/audio-pitch-transfer.md)。公開ZIPのone-click.8には未収録です。
 
 ## 公式配布版に追加した機能
