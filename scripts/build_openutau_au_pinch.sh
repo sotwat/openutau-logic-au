@@ -29,7 +29,8 @@ test "$official_hash" = 721d280152da239995f4b5fcee4f734ae7ab31de2c4c358d8d5e3dfc
 test "$official_hash" = 7e02c12ad8746464dc44ab1bd84b3644d0d4835fc88c68a8c3c4d97392f3b20c || \
 test "$official_hash" = 776f6f024570b3569c5a4049080451f706c923272819ed5bf67b84bc72ef6ea3 || \
 test "$official_hash" = 6cd1778d136f9fb58e6c05fda0e84abdca0527b4a765a08a662e90fabb5285a2 || \
-test "$official_hash" = d782462ac40fdec5bc4c203e22952798d98f94ea42eef864ac4284aa1861b7b8 || {
+test "$official_hash" = d782462ac40fdec5bc4c203e22952798d98f94ea42eef864ac4284aa1861b7b8 || \
+test "$official_hash" = d977ed29622347b1def191d9f238dad1de85a13671bcc228273d8d76a3b3870f || {
     echo 'Expected official or current OpenUtau AU 0.1.576 app.' >&2
     exit 1
 }
@@ -150,6 +151,14 @@ if git -C "$source_dir" apply --check "$coeiroink_patch" 2>/dev/null; then
     git -C "$source_dir" apply "$coeiroink_patch"
 elif ! git -C "$source_dir" apply --reverse --check "$coeiroink_patch" 2>/dev/null; then
     echo 'Source differs from the expected COEIROINK patch state.' >&2
+    exit 1
+fi
+
+restraint_patch="$repo/patches/openutau-autopitch-restraint-0.1.576.patch"
+if git -C "$source_dir" apply --check "$restraint_patch" 2>/dev/null; then
+    git -C "$source_dir" apply "$restraint_patch"
+elif ! git -C "$source_dir" apply --reverse --check "$restraint_patch" 2>/dev/null; then
+    echo 'Source differs from the expected Auto Pitch restraint patch state.' >&2
     exit 1
 fi
 

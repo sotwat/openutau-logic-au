@@ -1,0 +1,115 @@
+diff --git a/OpenUtau.Core/Editing/UtauVAutoPitch.cs b/OpenUtau.Core/Editing/UtauVAutoPitch.cs
+--- a/OpenUtau.Core/Editing/UtauVAutoPitch.cs
++++ b/OpenUtau.Core/Editing/UtauVAutoPitch.cs
+@@ -187,7 +187,39 @@
+             cancellationToken.ThrowIfCancellationRequested();
+             var validated = ValidateCurve(simplified.xs, simplified.ys, cfg.infer.clamp_output);
+             setProgressCallback(3, 3);
+-            return new CurveResult(validated.xs.ToArray(), validated.ys.ToArray());
++            return RestrainDeviation(new CurveResult(validated.xs.ToArray(), validated.ys.ToArray()),
++                selectedNotes.Count > 0 ? selectedNotes : notesAll);
++        }
++
++        public const double DeviationStrength = 0.25;
++        public const int DeviationLimitCents = 25;
++
++        public static CurveResult RestrainDeviation(CurveResult generated, IReadOnlyList<UNote> notes) {
++            if (generated.Xs.Length == 0 || generated.Xs.Length != generated.Ys.Length ||
++                generated.Xs.Zip(generated.Xs.Skip(1)).Any(p => p.First >= p.Second)) {
++                throw new InvalidDataException("Invalid Auto Pitch result.");
++            }
++            var predicted = new UCurve(new UExpressionDescriptor("pitch deviation", Format.Ustx.PITD, -1200, 1200, 0)) {
++                xs = generated.Xs.ToList(), ys = generated.Ys.ToList(),
++            };
++            var output = new SortedDictionary<int, int>();
++            foreach (var note in notes.OrderBy(n => n.position)) {
++                if (note.duration <= 0) { continue; }
++                // A sustained bias is perceived as detuning; keep only the motion around the note's core.
++                var core = Enumerable.Range(0, 17).Select(i => predicted.Sample(
++                    note.position + (int)Math.Round(note.duration * (0.25 + i / 32.0)))).OrderBy(v => v).ToArray();
++                double center = core[core.Length / 2];
++                for (int offset = 0; offset < note.duration; offset += UCurve.interval) {
++                    double phase = (double)offset / note.duration;
++                    double edge = Math.Clamp(Math.Min(phase, 1 - phase) / 0.12, 0, 1);
++                    double fade = edge * edge * (3 - 2 * edge);
++                    double delta = (predicted.Sample(note.position + offset) - center) * DeviationStrength;
++                    double limited = DeviationLimitCents * Math.Tanh(delta / DeviationLimitCents);
++                    output[note.position + offset] = (int)Math.Round(limited * fade);
++                }
++                output[note.End] = 0;
++            }
++            return new CurveResult(output.Keys.ToArray(), output.Values.ToArray());
+         }
+ 
+         public static MergedSetCurveCommand CreateCommand(UProject project, UVoicePart part,
+diff --git a/OpenUtau.Test/App/UtauVAutoPitchTest.cs b/OpenUtau.Test/App/UtauVAutoPitchTest.cs
+--- a/OpenUtau.Test/App/UtauVAutoPitchTest.cs
++++ b/OpenUtau.Test/App/UtauVAutoPitchTest.cs
+@@ -54,7 +54,7 @@
+             Assert.NotNull(result);
+             Assert.True(result.Xs.Length > 3);
+             Assert.Contains(result.Ys, y => y != 0);
+-            Assert.All(result.Ys, y => Assert.InRange(y, -1200, 1200));
++            Assert.All(result.Ys, y => Assert.InRange(y, -25, 25));
+             Assert.Equal(copyBefore, Notes(copy));
+             var command = UtauVAutoPitch.CreateCommand(project, part, notes, result);
+             command.Execute();
+@@ -105,6 +105,58 @@
+         }
+ 
+         [Fact]
++        public void RestraintRemovesDetuningWithoutFlatteningAllExpression() {
++            var (_, part) = Fixture();
++            var note = part.notes.First();
++            var xs = Enumerable.Range(0, 49).Select(i => i * 5).ToArray();
++            var ys = xs.Select(x => 400 + (int)Math.Round(180 * Math.Sin(x * Math.PI / 120))).ToArray();
++            var before = Notes(part);
++            var restrained = UtauVAutoPitch.RestrainDeviation(new(xs, ys), new[] { note });
++            var shifted = UtauVAutoPitch.RestrainDeviation(new(xs, ys.Select(y => y - 700).ToArray()), new[] { note });
++            Assert.Equal(restrained.Ys, shifted.Ys);
++            Assert.All(restrained.Ys, y => Assert.InRange(y, -25, 25));
++            Assert.Contains(restrained.Ys, y => y > 5);
++            Assert.Contains(restrained.Ys, y => y < -5);
++            Assert.Equal(0, restrained.Ys[0]);
++            Assert.Equal(0, restrained.Ys[^1]);
++            Assert.Equal(before, Notes(part));
++        }
++
++        [Fact]
++        public void RestraintCentersEachNoteAndBoundsOctaveSizedSpikes() {
++            var (_, part) = Fixture();
++            var notes = part.notes.Take(2).ToArray();
++            var xs = Enumerable.Range(0, 97).Select(i => i * 5).ToArray();
++            var ys = xs.Select(x => x < 240 ? 600 : -600).ToArray();
++            ys[18] = -1200; ys[66] = 1200;
++            var restrained = UtauVAutoPitch.RestrainDeviation(new(xs, ys), notes);
++            Assert.All(restrained.Ys, y => Assert.InRange(y, -25, 25));
++            Assert.Equal(0, restrained.Ys[Array.IndexOf(restrained.Xs, 120)]);
++            Assert.Equal(0, restrained.Ys[Array.IndexOf(restrained.Xs, 360)]);
++            Assert.Equal(0, restrained.Ys[Array.IndexOf(restrained.Xs, 240)]);
++        }
++
++        [Fact]
++        public void RestrainedApplicationPreservesSelectionAndUndo() {
++            var (project, part) = Fixture();
++            var selected = part.notes.Where((_, i) => i is 1 or 4).ToArray();
++            string before = Yaml.DefaultSerializer.Serialize(part);
++            var original = part.curves.Single().Clone();
++            var xs = Enumerable.Range(-20, 400).Select(i => i * 5).ToArray();
++            var ys = xs.Select(x => (int)(500 + 300 * Math.Sin(x / 40.0))).ToArray();
++            var restrained = UtauVAutoPitch.RestrainDeviation(new(xs, ys), selected);
++            var command = UtauVAutoPitch.CreateCommand(project, part, selected, restrained);
++            command.Execute();
++            foreach (int x in Enumerable.Range(0, 1680)) {
++                if (selected.Any(n => n.position <= x && x < n.End)) {
++                    Assert.InRange(part.curves.Single().Sample(x), -25, 25);
++                } else { Assert.InRange(Math.Abs(part.curves.Single().Sample(x) - original.Sample(x)), 0, 1); }
++            }
++            command.Unexecute();
++            Assert.Equal(before, Yaml.DefaultSerializer.Serialize(part));
++        }
++
++        [Fact]
+         public void CanceledPredictionDoesNotLoadOrApplyAnything() {
+             var (project, part) = Fixture();
+             var before = Yaml.DefaultSerializer.Serialize(part);
