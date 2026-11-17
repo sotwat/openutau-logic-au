@@ -1,0 +1,322 @@
+diff --git a/OpenUtau.Core/DiffSinger/DiffSingerCache.cs b/OpenUtau.Core/DiffSinger/DiffSingerCache.cs
+--- a/OpenUtau.Core/DiffSinger/DiffSingerCache.cs
++++ b/OpenUtau.Core/DiffSinger/DiffSingerCache.cs
+@@ -38,20 +38,15 @@
+             var result = new List<NamedOnnxValue>();
+             using var stream = new FileStream(cachePath, FileMode.Open, FileAccess.Read);
+             using var reader = new BinaryReader(stream);
+-            // header
+-            if (reader.ReadString() != FormatHeader) {
+-                throw new InvalidDataException($"[TensorCache] Unexpected file header in {filename}.");
+-            }
+             try {
+-                // count
+-                var count = reader.ReadInt32();
+-                for (var i = 0; i < count; ++i) {
+-                    // data
+-                    result.Add(DeserializeNamedOnnxValue(reader));
+-                }
++                if (reader.ReadString() != FormatHeader) { throw new InvalidDataException("Invalid tensor cache header."); }
++                int count = reader.ReadInt32();
++                if (count <= 0 || count > 64) { throw new InvalidDataException("Invalid tensor count."); }
++                for (int i = 0; i < count; i++) { result.Add(DeserializeNamedOnnxValue(reader)); }
++                Validate(result);
+             } catch (Exception e) {
+-                Log.Error(e,
+-                    "[TensorCache] Exception encountered when deserializing cache file. Root exception message: {msg}", e.Message);
++                Log.Warning(e, "Invalid tensor cache {File}; re-running inference.", filename);
++                stream.Dispose();
+                 Delete();
+                 return null;
+             }
+@@ -66,18 +61,27 @@
+             }
+         }
+ 
++        public static void Validate(ICollection<NamedOnnxValue> values) {
++            if (values.Count == 0 || values.Any(v =>
++                v.Value is Tensor<float> f && (f.Length == 0 || f.Any(x => !float.IsFinite(x))) ||
++                v.Value is Tensor<double> d && (d.Length == 0 || d.Any(x => !double.IsFinite(x))))) {
++                throw new InvalidDataException("DiffSinger returned an empty or non-finite tensor.");
++            }
++        }
++
+         public void Save(ICollection<NamedOnnxValue> outputs) {
++            Validate(outputs);
+             var cachePath = Path.Join(PathManager.Inst.CachePath, filename);
+-            using var stream = new FileStream(cachePath, FileMode.Create, FileAccess.Write);
+-            using var writer = new BinaryWriter(stream);
+-            // header
+-            writer.Write(FormatHeader);
+-            // count
+-            writer.Write(outputs.Count);
+-            foreach (var onnxValue in outputs) {
+-                // data
+-                SerializeNamedOnnxValue(writer, onnxValue);
+-            }
++            string temporary = cachePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
++            try {
++                using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write))
++                using (var writer = new BinaryWriter(stream)) {
++                    writer.Write(FormatHeader);
++                    writer.Write(outputs.Count);
++                    foreach (var output in outputs) { SerializeNamedOnnxValue(writer, output); }
++                }
++                File.Move(temporary, cachePath, true);
++            } finally { if (File.Exists(temporary)) { File.Delete(temporary); } }
+         }
+ 
+         private static void SerializeNamedOnnxValue(BinaryWriter writer, NamedOnnxValue namedOnnxValue) {
+@@ -302,7 +306,9 @@
+ 
+         private static Tensor<T> DeserializeTensor<T>(BinaryReader reader, int size, int typeSize, ReadOnlySpan<int> shape)
+         {
+-            var bytes = reader.ReadBytes(size * typeSize);
++            int byteCount = checked(size * typeSize);
++            var bytes = reader.ReadBytes(byteCount);
++            if (bytes.Length != byteCount) { throw new EndOfStreamException("Truncated tensor cache."); }
+             var data = new T[size];
+             Buffer.BlockCopy(bytes, 0, data, 0, bytes.Length);
+             Tensor<T> tensor = new DenseTensor<T>(data, shape);
+diff --git a/OpenUtau.Core/DiffSinger/DiffSingerRenderer.cs b/OpenUtau.Core/DiffSinger/DiffSingerRenderer.cs
+--- a/OpenUtau.Core/DiffSinger/DiffSingerRenderer.cs
++++ b/OpenUtau.Core/DiffSinger/DiffSingerRenderer.cs
+@@ -132,14 +132,26 @@
+                             using (var waveStream = Wave.OpenFile(wavPath)) {
+                                 result.samples = Wave.GetSamples(waveStream.ToSampleProvider().ToMono(1, 0));
+                             }
++                            if (!IsUsableAudio(result.samples, RequiresSignal(phrase))) {
++                                result.samples = null;
++                                File.Delete(wavPath);
++                                Log.Warning("Invalid or silent DiffSinger WAV cache {Path}; re-rendering.", wavPath);
++                            }
+                         } catch (Exception e) {
+                             Log.Error(e, "Failed to read cached render, re-rendering.");
+                         }
+                     }
+                     if (result.samples == null) {
+-                        result.samples = InvokeDiffsinger(phrase, depth, steps, cancellation, renderEvents);
++                        result.samples = RenderWithRecovery(
++                            () => InvokeDiffsinger(phrase, depth, steps, cancellation, renderEvents),
++                            cancellation.Token, RequiresSignal(phrase));
+                         if (result.samples != null) {
+-                            Wave.WriteMono16Wav(wavPath, result.samples);
++                            string temporary = wavPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
++                            try {
++                                Wave.WriteMono16Wav(temporary, result.samples);
++                                cancellation.Token.ThrowIfCancellationRequested();
++                                File.Move(temporary, wavPath, true);
++                            } finally { if (File.Exists(temporary)) { File.Delete(temporary); } }
+                         }
+                     }
+                     if (result.samples != null) {
+@@ -155,6 +167,30 @@
+         result.samples: Rendered audio, float[]
+         leadingMs、positionMs、estimatedLengthMs: timeaxis layout in Ms, double
+          */
++
++        static bool RequiresSignal(RenderPhrase phrase) => phrase.phones.Any(p =>
++            !new[] { "SP", "AP", "sil", "pau", "R" }.Contains(p.phoneme, StringComparer.OrdinalIgnoreCase));
++
++        public static bool IsUsableAudio(float[]? samples, bool requireSignal = true) =>
++            samples != null && samples.Length > 0 && samples.All(float.IsFinite) &&
++            (!requireSignal || samples.Any(x => Math.Abs(x) >= 1f / 32768));
++
++        public static float[]? RenderWithRecovery(Func<float[]?> synthesize, CancellationToken token, bool requireSignal = true) {
++            for (int attempt = 0; attempt < 2; attempt++) {
++                token.ThrowIfCancellationRequested();
++                try {
++                    var samples = synthesize();
++                    token.ThrowIfCancellationRequested();
++                    if (!IsUsableAudio(samples, requireSignal)) {
++                        throw new InvalidDataException("DiffSinger produced invalid or silent audio. No audio cache was saved.");
++                    }
++                    return samples;
++                } catch (InvalidDataException e) when (attempt == 0) {
++                    Log.Warning(e, "Invalid DiffSinger synthesis; retrying once.");
++                }
++            }
++            throw new InvalidDataException("DiffSinger synthesis failed.");
++        }
+ 
+         float[] InvokeDiffsinger(RenderPhrase phrase, double depth, int steps, CancellationTokenSource cancellation, RenderPhraseEvents? renderEvents) {
+             var singer = phrase.singer as DiffSingerSinger;
+@@ -476,6 +512,7 @@
+                 acousticCache?.Save(acousticOutputs);
+                 phrase.AddCacheFile(acousticCache?.Filename);
+             }
++            DiffSingerCache.Validate(acousticOutputs);
+             Tensor<float> mel = acousticOutputs.First().AsTensor<float>().Clone();
+             //mel transforms for different mel base
+             if (vocoder.mel_base != singer.dsConfig.mel_base) {
+@@ -506,6 +543,7 @@
+                 ? new DiffSingerCache(vocoder.hash, vocoderInputs)
+                 : null;
+             var vocoderOutputs = vocoderCache?.Load();
++            bool usedVocoderCache = vocoderOutputs != null;
+             if (vocoderOutputs is null) {
+                 lock(singer.SessionLock){
+                     if(cancellation.IsCancellationRequested) {
+@@ -513,7 +551,6 @@
+                     }
+                     vocoderOutputs = vocoder.session.Run(vocoderInputs).Cast<NamedOnnxValue>().ToList();
+                 }
+-                vocoderCache?.Save(vocoderOutputs);
+                 phrase.AddCacheFile(vocoderCache?.Filename);
+             }
+             Tensor<float> samplesTensor = vocoderOutputs.First().AsTensor<float>();
+@@ -523,6 +560,12 @@
+                 throw new Exception($"The shape of vocoder output should be (1, length), but the actual shape is {DiffSingerUtils.ShapeString(samplesTensor)}");
+             }
+             var samples = samplesTensor.ToArray();
++            if (!IsUsableAudio(samples, RequiresSignal(phrase))) {
++                acousticCache?.Delete();
++                vocoderCache?.Delete();
++                throw new InvalidDataException("DiffSinger vocoder returned invalid or silent audio.");
++            }
++            if (!usedVocoderCache) { vocoderCache?.Save(vocoderOutputs); }
+             if (vocoder.sample_rate != 44100) {
+                 var signal = new NWaves.Signals.DiscreteSignal(vocoder.sample_rate, samples);
+                 signal = NWaves.Operations.Operation.Resample(signal, 44100);
+diff --git a/OpenUtau.Test/App/AutoTuningTest.cs b/OpenUtau.Test/App/AutoTuningTest.cs
+--- a/OpenUtau.Test/App/AutoTuningTest.cs
++++ b/OpenUtau.Test/App/AutoTuningTest.cs
+@@ -190,6 +190,24 @@
+         }
+ 
+         [Fact]
++        public void InvalidEnuPitchCannotReplaceNotePitch() {
++            var note = UNote.Create();
++            var original = note.pitch;
++            var malformed = new float[][][] {
++                new[] { new[] { 0f, 0f } },
++                new[] { new[] { 10f, 0f }, new[] { 0f, 0f } },
++                new[] { new[] { 0f, float.NaN }, new[] { 10f, 0f } },
++                new[] { new[] { 0f, 999f }, new[] { 10f, 0f } },
++            };
++            foreach (var points in malformed) {
++                var error = Assert.Throws<TargetInvocationException>(() => typeof(PianoRoll)
++                    .GetMethod("BuildTunedPitch", PrivateStatic)!.Invoke(null, new object[] { note, points }));
++                Assert.IsType<InvalidDataException>(error.InnerException);
++                Assert.Same(original, note.pitch);
++            }
++        }
++
++        [Fact]
+         public void EnuPitchEditRetainsGainAndTechniqueAndCanBeUndone() {
+             var note = UNote.Create();
+             note.position = 0; note.duration = 480; note.tone = 64; note.lyric = "あ";
+diff --git a/OpenUtau.Test/Core/DiffSinger/DiffSingerCacheSafetyTest.cs b/OpenUtau.Test/Core/DiffSinger/DiffSingerCacheSafetyTest.cs
+new file mode 100644
+--- /dev/null
++++ b/OpenUtau.Test/Core/DiffSinger/DiffSingerCacheSafetyTest.cs
+@@ -0,0 +1,78 @@
++using System;
++using System.IO;
++using System.Linq;
++using System.Collections.Generic;
++using System.Threading;
++using Microsoft.ML.OnnxRuntime;
++using Microsoft.ML.OnnxRuntime.Tensors;
++using OpenUtau.Core.DiffSinger;
++using OpenUtau.Core;
++using Xunit;
++
++namespace OpenUtau.Core {
++    [Collection(RenderSingletonCollection.Name)]
++    public class DiffSingerCacheSafetyTest {
++        static List<NamedOnnxValue> Values(params float[] data) => new() {
++            NamedOnnxValue.CreateFromTensor("waveform", new DenseTensor<float>(data, new[] { 1, data.Length })),
++        };
++        static DiffSingerCache Cache() => new((ulong)DateTime.UtcNow.Ticks, Values(Guid.NewGuid().GetHashCode()));
++        static string PathOf(DiffSingerCache cache) => Path.Combine(PathManager.Inst.CachePath, cache.Filename);
++
++        [Fact]
++        public void NonFiniteSaveCannotReplaceHealthyCache() {
++            var cache = Cache();
++            try {
++                cache.Save(Values(0.1f, -0.2f));
++                var original = File.ReadAllBytes(PathOf(cache));
++                Assert.Throws<InvalidDataException>(() => cache.Save(Values(float.NaN)));
++                Assert.Throws<InvalidDataException>(() => cache.Save(Values(float.PositiveInfinity)));
++                Assert.Equal(original, File.ReadAllBytes(PathOf(cache)));
++                Assert.Equal(new[] { 0.1f, -0.2f }, cache.Load()!.Single().AsTensor<float>().ToArray());
++                Assert.Empty(Directory.GetFiles(PathManager.Inst.CachePath, cache.Filename + ".*.tmp"));
++            } finally { cache.Delete(); }
++        }
++
++        [Fact]
++        public void NonFiniteTruncatedAndBadHeaderCachesAreRegenerated() {
++            var cache = Cache();
++            try {
++                cache.Save(Values(0.1f, 0.2f));
++                using (var file = File.OpenWrite(PathOf(cache))) {
++                    file.Position = file.Length - 4;
++                    using var writer = new BinaryWriter(file);
++                    writer.Write(float.NaN);
++                }
++                Assert.Null(cache.Load());
++                Assert.False(File.Exists(PathOf(cache)));
++                cache.Save(Values(0.1f, 0.2f));
++                using (var file = File.OpenWrite(PathOf(cache))) { file.SetLength(file.Length - 2); }
++                Assert.Null(cache.Load());
++                File.WriteAllText(PathOf(cache), "broken");
++                Assert.Null(cache.Load());
++            } finally { cache.Delete(); }
++        }
++
++        [Fact]
++        public void InvalidOrSilentInferenceRetriesWithoutReturningSilence() {
++            foreach (var invalid in new[] { new[] { float.NaN }, new[] { 0f, 0f }, Array.Empty<float>() }) {
++                int calls = 0;
++                var recovered = DiffSingerRenderer.RenderWithRecovery(
++                    () => ++calls == 1 ? invalid : new[] { 0.1f, -0.2f }, CancellationToken.None);
++                Assert.Equal(2, calls);
++                Assert.Equal(new[] { 0.1f, -0.2f }, recovered);
++            }
++        }
++
++        [Fact]
++        public void RepeatedFailureIsExplicitAndCancellationRunsNoInference() {
++            int calls = 0;
++            Assert.Throws<InvalidDataException>(() => DiffSingerRenderer.RenderWithRecovery(
++                () => { calls++; return new[] { float.NaN }; }, CancellationToken.None));
++            Assert.Equal(2, calls);
++            Assert.Throws<OperationCanceledException>(() => DiffSingerRenderer.RenderWithRecovery(
++                () => throw new Exception("Must not run"), new CancellationToken(true)));
++            Assert.True(DiffSingerRenderer.IsUsableAudio(new[] { 0f }, requireSignal: false));
++            Assert.False(DiffSingerRenderer.IsUsableAudio(new[] { float.NaN }, requireSignal: false));
++        }
++    }
++}
+diff --git a/OpenUtau/Controls/PianoRoll.AutoTuning.cs b/OpenUtau/Controls/PianoRoll.AutoTuning.cs
+--- a/OpenUtau/Controls/PianoRoll.AutoTuning.cs
++++ b/OpenUtau/Controls/PianoRoll.AutoTuning.cs
+@@ -155,9 +155,13 @@
+                             selected.Contains(pair.First) && pair.Second.Length >= 2)
+                             .Select(pair => new SetPitchPointsCommand(part, pair.First, BuildTunedPitch(pair.First, ReduceEnuPoints(pair.Second, options!.Reduction)))).ToArray();
+                         if (commands.Length == 0) { throw new InvalidDataException("EnuPitch returned no pitch curves."); }
+-                        DocManager.Inst.StartUndoGroup("command.pitch.add");
+-                        foreach (var command in commands) { DocManager.Inst.ExecuteCmd(command); }
+-                        DocManager.Inst.EndUndoGroup();
++                        DocManager.Inst.StartUndoGroup("command.pitch.add", deferValidate: true);
++                        try {
++                            foreach (var command in commands) { DocManager.Inst.ExecuteCmd(command); }
++                        } catch {
++                            DocManager.Inst.RollBackUndoGroup();
++                            throw;
++                        } finally { DocManager.Inst.EndUndoGroup(); }
+                     } else if (!before.SequenceEqual(File.ReadAllBytes(input))) {
+                         var (remove, add) = Ust.ParsePlugin(project, part, first, last, sequence, input);
+                         KeepAutoPitchwriterCurve(add);
+@@ -305,7 +309,9 @@
+         }
+ 
+         private static UPitch BuildTunedPitch(UNote note, float[][] data) {
+-            if (data.Length > 10000 || data.Any(p => p.Length != 2 || !float.IsFinite(p[0]) || !float.IsFinite(p[1]))) {
++            if (data.Length < 2 || data.Length > 10000 ||
++                data.Any(p => p == null || p.Length != 2 || !float.IsFinite(p[0]) || !float.IsFinite(p[1]) || Math.Abs(p[1]) > 240) ||
++                data.Zip(data.Skip(1)).Any(pair => pair.First[0] >= pair.Second[0])) {
+                 throw new InvalidDataException("Invalid EnuPitch control points.");
+             }
+             var pitch = new UPitch { snapFirst = false, data = data.Select(p => new PitchPoint(p[0], p[1])).ToList(),

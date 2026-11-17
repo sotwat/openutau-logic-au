@@ -162,6 +162,14 @@ elif ! git -C "$source_dir" apply --reverse --check "$restraint_patch" 2>/dev/nu
     exit 1
 fi
 
+cache_recovery_patch="$repo/patches/openutau-diffsinger-cache-recovery-0.1.576.patch"
+if git -C "$source_dir" apply --check "$cache_recovery_patch" 2>/dev/null; then
+    git -C "$source_dir" apply "$cache_recovery_patch"
+elif ! git -C "$source_dir" apply --reverse --check "$cache_recovery_patch" 2>/dev/null; then
+    echo 'Source differs from the expected DiffSinger cache recovery patch state.' >&2
+    exit 1
+fi
+
 # Keep the bundled XML signature implementation on the fixed NuGet line.
 # The official 0.1.576 source resolves 10.0.11, which is affected by the
 # current NuGet advisories; apply this reproducible build-time override after
